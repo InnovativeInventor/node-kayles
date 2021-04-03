@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use structopt::StructOpt;
 use itertools::Itertools;
+use std::thread;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "non-attacking-queens", about = "Queens shouldn't kill each other!")]
@@ -53,7 +54,7 @@ fn main() {
     let (grid, grid_tracker) = instantiate_grid(opt.size);
 
     let mut state = BoardState::new(grid.clone(), grid_tracker);
-    let value = state.calculate(true);
+    let value = state.calculate(0);
     println!("{}", value);
 
     let mut fs = std::fs::File::create("out.dot").unwrap();
@@ -73,7 +74,7 @@ impl BoardState {
             grid_tracker: grid_tracker
         }
     }
-    fn calculate(&mut self, verbose: bool) -> usize {
+    fn calculate(&mut self, level: usize) -> usize {
         if self.grid.node_count() == 0 && self.grid.edge_count() == 0 {
             return 0
         } else if self.grid.node_count() == 1 {
@@ -83,6 +84,7 @@ impl BoardState {
         let mut graph_history: Vec<Graph<bool, u8, Undirected>> = vec![];
         let mut values: Vec<usize> = vec![];
         let mut diagram = HashMap::<(usize, usize), usize>::new();
+        let mut handles: Vec<(usize, usize, std::thread::JoinHandle<usize>)> = vec![];
 
         for i in 0..self.grid_tracker.len() {
             'nodeloop: for ((x, y), mut node) in &self.grid_tracker[i] {
@@ -100,17 +102,31 @@ impl BoardState {
                     }
                     graph_history.push(Graph::from(new_grid.clone()));
 
-                    let value = BoardState::new(new_grid, self.grid_tracker.clone()).calculate(false);
-                    values.push(value);
 
-                    if verbose {
-                        diagram.insert((*x, *y), value.clone());
+                    let grid_tracker = self.grid_tracker.clone();
+                    if level == 0{
+                        handles.push((x.clone(), y.clone(), std::thread::spawn(move || {
+                            let value = BoardState::new(new_grid, grid_tracker).calculate(level+1);
+                            value
+                        })));
+
+                    } else {
+                        let value = BoardState::new(new_grid, grid_tracker).calculate(level+1);
+                        values.push(value);
                     }
                 }
             }
         }
 
-        if verbose {
+
+        if level == 0 {
+
+            for (x, y, handle) in handles {
+                let value = handle.join().unwrap();
+                diagram.insert((x, y), value.clone());
+                values.push(value);
+            }
+
             println!("{:?}", diagram);
         }
         return mex(values);

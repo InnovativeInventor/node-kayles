@@ -1,5 +1,5 @@
 data = eval(input()) # unsafe
-n = 8
+n = 10
 
 for i in range(n+1):
     if i == 0:
