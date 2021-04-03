@@ -14,6 +14,9 @@ use std::thread;
 struct Opt {
     #[structopt(short, long)]
     size: usize,
+
+    #[structopt(short = "t", long = "thread-level", default_value = "2")]
+    thread_depth: usize
 }
 
 // The graph is represented by nodes that have a bool (alive or dead) and a edges with a byte
@@ -54,7 +57,7 @@ fn main() {
     let (grid, grid_tracker) = instantiate_grid(opt.size);
 
     let mut state = BoardState::new(grid.clone(), grid_tracker);
-    let value = state.calculate(0);
+    let value = state.calculate(0, opt.thread_depth-1);
     println!("{}", value);
 
     let mut fs = std::fs::File::create("out.dot").unwrap();
@@ -74,7 +77,7 @@ impl BoardState {
             grid_tracker: grid_tracker
         }
     }
-    fn calculate(&mut self, level: usize) -> usize {
+    fn calculate(&mut self, level: usize, thread_depth: usize) -> usize {
         if self.grid.node_count() == 0 && self.grid.edge_count() == 0 {
             return 0
         } else if self.grid.node_count() == 1 {
@@ -104,14 +107,14 @@ impl BoardState {
 
 
                     let grid_tracker = self.grid_tracker.clone();
-                    if level == 0{
+                    if level < thread_depth {
                         handles.push((x.clone(), y.clone(), std::thread::spawn(move || {
-                            let value = BoardState::new(new_grid, grid_tracker).calculate(level+1);
+                            let value = BoardState::new(new_grid, grid_tracker).calculate(level+1, thread_depth);
                             value
                         })));
 
                     } else {
-                        let value = BoardState::new(new_grid, grid_tracker).calculate(level+1);
+                        let value = BoardState::new(new_grid, grid_tracker).calculate(level+1, thread_depth);
                         values.push(value);
                     }
                 }
@@ -119,8 +122,7 @@ impl BoardState {
         }
 
 
-        if level == 0 {
-
+        if level < thread_depth {
             for (x, y, handle) in handles {
                 let value = handle.join().unwrap();
                 diagram.insert((x, y), value.clone());
@@ -256,7 +258,16 @@ mod tests {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
             let (grid, grid_tracker) = instantiate_grid(*size);
             let mut state = BoardState::new(grid.clone(), grid_tracker);
-            assert!(state.calculate(true)==*sol);
+            assert!(state.calculate(0, 0)==*sol);
+        }
+    }
+
+    #[test]
+    fn test_end_multi() {
+        for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
+            let (grid, grid_tracker) = instantiate_grid(*size);
+            let mut state = BoardState::new(grid.clone(), grid_tracker);
+            assert!(state.calculate(0, 3)==*sol);
         }
     }
 }
