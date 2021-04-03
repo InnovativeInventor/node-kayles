@@ -17,8 +17,8 @@ python format.py
 ```
 then paste the dictionary that you want to plot into stdin.
 
-It is recommended that you increase the stack size before running. Eg:
+It is recommended that you increase the stack size before running on large grids. Eg:
 ```
-ulimit -s 16192
+ulimit -s 65532
 ```
 
