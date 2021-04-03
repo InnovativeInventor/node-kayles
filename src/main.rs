@@ -8,6 +8,7 @@ use std::io::Write;
 use structopt::StructOpt;
 use itertools::Itertools;
 use std::thread;
+use std::sync::Arc;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "non-attacking-queens", about = "Queens shouldn't kill each other!")]
@@ -15,14 +16,14 @@ struct Opt {
     #[structopt(short, long)]
     size: usize,
 
-    #[structopt(short = "t", long = "thread-level", default_value = "2")]
+    #[structopt(short = "t", long = "thread-level", default_value = "0")]
     thread_depth: usize
 }
 
 // The graph is represented by nodes that have a bool (alive or dead) and a edges with a byte
 // 0: - , 1: |, 2: \, 3: /
 
-fn instantiate_grid(n: usize) -> (StableGraph<bool, u8, Undirected>, Vec<Vec<((usize, usize), NodeIndex)>>) {
+fn instantiate_grid(n: usize) -> (StableGraph<bool, u8, Undirected>, Arc<Vec<Vec<((usize, usize), NodeIndex)>>>) {
     let mut grid = StableGraph::<bool, u8, Undirected>::default();
     let mut grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>> = vec![];
     for i in 0..n {
@@ -49,7 +50,7 @@ fn instantiate_grid(n: usize) -> (StableGraph<bool, u8, Undirected>, Vec<Vec<((u
         grid_tracker.push(row);
     }
 
-    return (grid, grid_tracker)
+    return (grid, Arc::new(grid_tracker))
 }
 
 fn main() {
@@ -67,11 +68,11 @@ fn main() {
 
 struct BoardState {
     grid: StableGraph<bool, u8, Undirected>,
-    grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>>, // todo: flatten
+    grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>, // todo: flatten
 }
 
 impl BoardState {
-    fn new(grid: StableGraph<bool, u8, Undirected>, grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>>) -> Self {
+    fn new(grid: StableGraph<bool, u8, Undirected>, grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>) -> Self {
         Self { 
             grid: grid,
             grid_tracker: grid_tracker
