@@ -211,9 +211,6 @@ fn mex(values: Vec<usize>) -> usize {
 #[cfg(test)]
 mod tests {
     use crate::{instantiate_grid, mex, remove_node, BoardState};
-    use petgraph::dot::{Dot};
-    use std::io::Write;
-    use std::collections::HashMap;
 
     #[test]
     fn test_grid_2() {
