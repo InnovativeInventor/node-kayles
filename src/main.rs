@@ -2,10 +2,11 @@ use petgraph::graph::{NodeIndex, Graph};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use petgraph::dot::{Dot};
-use petgraph::algo::{is_isomorphic};
+use petgraph::algo::{is_isomorphic_matching};
 use std::collections::HashMap;
 use std::io::Write;
 use structopt::StructOpt;
+use itertools::Itertools;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "non-attacking-queens", about = "Queens shouldn't kill each other!")]
@@ -50,6 +51,7 @@ fn instantiate_grid(n: usize) -> (StableGraph<bool, u8, Undirected>, Vec<Vec<((u
 fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.size);
+
     let mut state = BoardState::new(grid.clone(), grid_tracker);
     let value = state.calculate(true);
     println!("{}", value);
@@ -81,25 +83,33 @@ impl BoardState {
         let mut graph_history: Vec<Graph<bool, u8, Undirected>> = vec![];
         let mut values: Vec<usize> = vec![];
         let mut diagram = HashMap::<(usize, usize), usize>::new();
+
         for i in 0..self.grid_tracker.len() {
             'nodeloop: for ((x, y), mut node) in &self.grid_tracker[i] {
                 if self.grid.contains_node(node) { // can make more efficient
                     let new_grid = remove_node(self.grid.clone(), &mut node);
                     assert!(new_grid.node_count() < self.grid.node_count()); // defensive
 
+                    let grid_graph = &Graph::from(new_grid.clone());
                     for graph in &graph_history {
-                        if is_isomorphic(&Graph::from(new_grid.clone()), graph) { // todo: examine diff with/without matching
-                            continue 'nodeloop;
+                        for perms in (0..5).permutations(4) {
+                            if is_isomorphic_matching(grid_graph, graph, |_x, _y| true, |x, y| &perms[*x as usize]==y) { // todo: examine diff with/without matching
+                                continue 'nodeloop;
+                            }
                         }
                     }
                     graph_history.push(Graph::from(new_grid.clone()));
 
                     let value = BoardState::new(new_grid, self.grid_tracker.clone()).calculate(false);
-                    diagram.insert((*x, *y), value.clone());
                     values.push(value);
+
+                    if verbose {
+                        diagram.insert((*x, *y), value.clone());
+                    }
                 }
             }
         }
+
         if verbose {
             println!("{:?}", diagram);
         }
