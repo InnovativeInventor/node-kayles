@@ -231,16 +231,31 @@ fn remove_node(
         // contract
         grid.remove_node(each_node);
     }
-    grid.remove_node(*node);
+    // grid.remove_node(*node);
 
     grid
 }
 
+// fn mex(values: Vec<usize>) -> usize {
 fn mex(values: Vec<usize>) -> usize {
     let mut min = 0;
-    while values.contains(&min) {
-        min += 1;
+
+    /*
+    values.sort();
+    for value in values {
+        if value == min {
+            min += 1;
+        } else if value > min {
+            return min
+        }
     }
+    */
+
+    // faster
+    while values.contains(&min) {
+         min += 1;
+    }
+
     return min;
 }
 
@@ -325,6 +340,14 @@ mod tests {
         let mut state = BoardState::new(grid.clone(), grid_tracker);
         b.iter(|| {
             state.calculate(0, 0);
+        });
+    }
+
+    #[bench]
+    fn bench_mex(b: &mut Bencher) {
+        let test_vec = vec![3,3,9,2,0,9,8,4,2,7];
+        b.iter(|| {
+            mex(test_vec.clone());
         });
     }
 }
