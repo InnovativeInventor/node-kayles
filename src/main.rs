@@ -50,7 +50,7 @@ fn instantiate_grid(n: usize) -> (StableGraph<bool, u8, Undirected>, Vec<Vec<((u
 fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.size);
-    let mut state = BoardState::new(grid.clone(), Box::new(grid_tracker));
+    let mut state = BoardState::new(grid.clone(), grid_tracker);
     let value = state.calculate(true);
     println!("{}", value);
 
@@ -65,10 +65,10 @@ struct BoardState {
 }
 
 impl BoardState {
-    fn new(grid: StableGraph<bool, u8, Undirected>, grid_tracker: Box<Vec<Vec<((usize, usize), NodeIndex)>>>) -> Self {
+    fn new(grid: StableGraph<bool, u8, Undirected>, grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>>) -> Self {
         Self { 
             grid: grid,
-            grid_tracker: *grid_tracker
+            grid_tracker: grid_tracker
         }
     }
     fn calculate(&mut self, verbose: bool) -> usize {
@@ -94,7 +94,7 @@ impl BoardState {
                     }
                     graph_history.push(Graph::from(new_grid.clone()));
 
-                    let value = BoardState::new(new_grid, Box::new(self.grid_tracker.clone())).calculate(false);
+                    let value = BoardState::new(new_grid, self.grid_tracker.clone()).calculate(false);
                     diagram.insert((*x, *y), value.clone());
                     values.push(value);
                 }
@@ -227,7 +227,7 @@ mod tests {
     fn test_end() {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
             let (grid, grid_tracker) = instantiate_grid(*size);
-            let mut state = BoardState::new(grid.clone(), Box::new(grid_tracker));
+            let mut state = BoardState::new(grid.clone(), grid_tracker);
             assert!(state.calculate(true)==*sol);
         }
     }
