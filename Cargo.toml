@@ -13,6 +13,7 @@ structopt="0.3.21"
 itertools="0.10.0"
 
 [profile.release]
+debug = true
 lto = true
 codegen-units = 1
 panic = "abort"

@@ -1,4 +1,5 @@
-use itertools::Itertools;
+#![feature(test)]
+
 use petgraph::algo::is_isomorphic_matching;
 use petgraph::dot::Dot;
 use petgraph::graph::{Graph, NodeIndex};
@@ -7,8 +8,9 @@ use petgraph::Undirected;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
-use std::thread;
 use structopt::StructOpt;
+
+extern crate test;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -16,16 +18,15 @@ use structopt::StructOpt;
     about = "Queens shouldn't kill each other!"
 )]
 struct Opt {
-    #[structopt(short, long)]
+    #[structopt(short = "s", long = "size", default_value = "7")]
     size: usize,
 
-    #[structopt(short = "t", long = "thread-level", default_value = "0")]
+    #[structopt(short = "t", long = "thread-level", default_value = "1")]
     thread_depth: usize,
 }
 
 // The graph is represented by nodes that have a bool (alive or dead) and a edges with a byte
 // 0: - , 1: |, 2: \, 3: /
-
 fn instantiate_grid(
     n: usize,
 ) -> (
@@ -89,6 +90,7 @@ impl BoardState {
         }
     }
     fn calculate(&mut self, level: usize, thread_depth: usize) -> usize {
+
         if self.grid.node_count() == 0 && self.grid.edge_count() == 0 {
             return 0;
         } else if self.grid.node_count() == 1 {
@@ -105,13 +107,13 @@ impl BoardState {
                 if self.grid.contains_node(node) {
                     // can make more efficient
                     let new_grid = remove_node(self.grid.clone(), &mut node);
-                    assert!(new_grid.node_count() < self.grid.node_count()); // defensive
+                    // assert!(new_grid.node_count() < self.grid.node_count()); // defensive
 
-                    let grid_graph = &Graph::from(new_grid.clone());
+                    let grid_graph = Graph::from(new_grid.clone());
                     for graph in &graph_history {
-                        for perms in (0..5).permutations(4) {
+                        for perms in &PERMUTATIONS_4 {
                             if is_isomorphic_matching(
-                                grid_graph,
+                                &grid_graph,
                                 graph,
                                 |_x, _y| true,
                                 |x, y| &perms[*x as usize] == y,
@@ -121,13 +123,13 @@ impl BoardState {
                             }
                         }
                     }
-                    graph_history.push(Graph::from(new_grid.clone()));
+                    graph_history.push(grid_graph);
 
                     let grid_tracker = self.grid_tracker.clone();
                     if level < thread_depth {
                         handles.push((
-                            x.clone(),
-                            y.clone(),
+                            *x,
+                            *y,
                             std::thread::spawn(move || {
                                 let value = BoardState::new(new_grid, grid_tracker)
                                     .calculate(level + 1, thread_depth);
@@ -240,7 +242,9 @@ fn mex(values: Vec<usize>) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{instantiate_grid, mex, remove_node, BoardState};
+    use test::Bencher;
 
     #[test]
     fn test_grid_2() {
@@ -301,4 +305,147 @@ mod tests {
             assert!(state.calculate(0, 3) == *sol);
         }
     }
+
+    #[bench]
+    fn bench_5(b: &mut Bencher) {
+        let (grid, grid_tracker) = instantiate_grid(5);
+        let mut state = BoardState::new(grid.clone(), grid_tracker);
+        b.iter(|| {
+            state.calculate(0, 0);
+        });
+    }
+
+    #[bench]
+    fn bench_6(b: &mut Bencher) {
+        let (grid, grid_tracker) = instantiate_grid(6);
+        let mut state = BoardState::new(grid.clone(), grid_tracker);
+        b.iter(|| {
+            state.calculate(0, 0);
+        });
+    }
 }
+
+// Vec::from_iter((0..5).permutations(4))
+// This is only for performance :)
+const PERMUTATIONS_4: [[u8; 4]; 120] = [
+    [0, 1, 2, 3],
+    [0, 1, 2, 4],
+    [0, 1, 3, 2],
+    [0, 1, 3, 4],
+    [0, 1, 4, 2],
+    [0, 1, 4, 3],
+    [0, 2, 1, 3],
+    [0, 2, 1, 4],
+    [0, 2, 3, 1],
+    [0, 2, 3, 4],
+    [0, 2, 4, 1],
+    [0, 2, 4, 3],
+    [0, 3, 1, 2],
+    [0, 3, 1, 4],
+    [0, 3, 2, 1],
+    [0, 3, 2, 4],
+    [0, 3, 4, 1],
+    [0, 3, 4, 2],
+    [0, 4, 1, 2],
+    [0, 4, 1, 3],
+    [0, 4, 2, 1],
+    [0, 4, 2, 3],
+    [0, 4, 3, 1],
+    [0, 4, 3, 2],
+    [1, 0, 2, 3],
+    [1, 0, 2, 4],
+    [1, 0, 3, 2],
+    [1, 0, 3, 4],
+    [1, 0, 4, 2],
+    [1, 0, 4, 3],
+    [1, 2, 0, 3],
+    [1, 2, 0, 4],
+    [1, 2, 3, 0],
+    [1, 2, 3, 4],
+    [1, 2, 4, 0],
+    [1, 2, 4, 3],
+    [1, 3, 0, 2],
+    [1, 3, 0, 4],
+    [1, 3, 2, 0],
+    [1, 3, 2, 4],
+    [1, 3, 4, 0],
+    [1, 3, 4, 2],
+    [1, 4, 0, 2],
+    [1, 4, 0, 3],
+    [1, 4, 2, 0],
+    [1, 4, 2, 3],
+    [1, 4, 3, 0],
+    [1, 4, 3, 2],
+    [2, 0, 1, 3],
+    [2, 0, 1, 4],
+    [2, 0, 3, 1],
+    [2, 0, 3, 4],
+    [2, 0, 4, 1],
+    [2, 0, 4, 3],
+    [2, 1, 0, 3],
+    [2, 1, 0, 4],
+    [2, 1, 3, 0],
+    [2, 1, 3, 4],
+    [2, 1, 4, 0],
+    [2, 1, 4, 3],
+    [2, 3, 0, 1],
+    [2, 3, 0, 4],
+    [2, 3, 1, 0],
+    [2, 3, 1, 4],
+    [2, 3, 4, 0],
+    [2, 3, 4, 1],
+    [2, 4, 0, 1],
+    [2, 4, 0, 3],
+    [2, 4, 1, 0],
+    [2, 4, 1, 3],
+    [2, 4, 3, 0],
+    [2, 4, 3, 1],
+    [3, 0, 1, 2],
+    [3, 0, 1, 4],
+    [3, 0, 2, 1],
+    [3, 0, 2, 4],
+    [3, 0, 4, 1],
+    [3, 0, 4, 2],
+    [3, 1, 0, 2],
+    [3, 1, 0, 4],
+    [3, 1, 2, 0],
+    [3, 1, 2, 4],
+    [3, 1, 4, 0],
+    [3, 1, 4, 2],
+    [3, 2, 0, 1],
+    [3, 2, 0, 4],
+    [3, 2, 1, 0],
+    [3, 2, 1, 4],
+    [3, 2, 4, 0],
+    [3, 2, 4, 1],
+    [3, 4, 0, 1],
+    [3, 4, 0, 2],
+    [3, 4, 1, 0],
+    [3, 4, 1, 2],
+    [3, 4, 2, 0],
+    [3, 4, 2, 1],
+    [4, 0, 1, 2],
+    [4, 0, 1, 3],
+    [4, 0, 2, 1],
+    [4, 0, 2, 3],
+    [4, 0, 3, 1],
+    [4, 0, 3, 2],
+    [4, 1, 0, 2],
+    [4, 1, 0, 3],
+    [4, 1, 2, 0],
+    [4, 1, 2, 3],
+    [4, 1, 3, 0],
+    [4, 1, 3, 2],
+    [4, 2, 0, 1],
+    [4, 2, 0, 3],
+    [4, 2, 1, 0],
+    [4, 2, 1, 3],
+    [4, 2, 3, 0],
+    [4, 2, 3, 1],
+    [4, 3, 0, 1],
+    [4, 3, 0, 2],
+    [4, 3, 1, 0],
+    [4, 3, 1, 2],
+    [4, 3, 2, 0],
+    [4, 3, 2, 1],
+];
