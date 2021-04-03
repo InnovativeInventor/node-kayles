@@ -129,8 +129,12 @@ impl BoardState {
                 values.push(value);
             }
 
+        }
+
+        if level == 0 {
             println!("{:?}", diagram);
         }
+
         return mex(values);
     }
 }
