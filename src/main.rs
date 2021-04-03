@@ -169,20 +169,20 @@ fn remove_node(
     mut grid: StableGraph<bool, u8, Undirected>,
     node: &mut NodeIndex,
 ) -> StableGraph<bool, u8, Undirected> {
-    let mut followed_nodes: Vec<NodeIndex> = vec![];
-    for weight in 0..5 {
-        let mut directional_followed_nodes: Vec<NodeIndex> = vec![*node];
+    let mut followed_nodes: Vec<(u8, NodeIndex)> = vec![];
+    for weight in 0..4 {
+        let mut directional_followed_nodes: Vec<(u8, NodeIndex)> = vec![(0, *node), (1, *node), (2, *node), (3, *node)];
         let mut stop = false;
         while stop == false {
             stop = true;
             for j in 0..directional_followed_nodes.len() {
-                let mut walker = grid.neighbors(directional_followed_nodes[j]).detach();
+                let mut walker = grid.neighbors(directional_followed_nodes[j].1).detach();
                 while let Some((other_edge, other_node)) = walker.next(&grid) {
                     if grid.edge_weight(other_edge).unwrap().clone() == weight
-                        && !directional_followed_nodes.contains(&other_node)
+                        && !directional_followed_nodes.contains(&(weight, other_node))
                     {
                         // can make more efficient
-                        directional_followed_nodes.push(other_node);
+                        directional_followed_nodes.push((weight, other_node));
                         stop = false;
                     }
                 }
@@ -199,7 +199,7 @@ fn remove_node(
 
     for curr_node_index in 0..followed_nodes.len() {
         // stitch
-        let curr_node = followed_nodes[curr_node_index];
+        let (curr_weight, curr_node) = followed_nodes[curr_node_index];
 
         let mut edge_map: HashMap<u8, Vec<NodeIndex>> = HashMap::new();
         let mut curr_walker = grid.neighbors(curr_node).detach();
@@ -211,6 +211,10 @@ fn remove_node(
             */
 
             let weight = grid.edge_weight(edge).unwrap().clone();
+
+            if weight == curr_weight {
+                continue
+            }
 
             if edge_map.contains_key(&weight) {
                 let mut same_weight_neighbors = edge_map.get(&weight).unwrap().clone();
@@ -229,7 +233,7 @@ fn remove_node(
 
     for each_node in followed_nodes {
         // contract
-        grid.remove_node(each_node);
+        grid.remove_node(each_node.1);
     }
     // grid.remove_node(*node);
 
@@ -354,125 +358,4 @@ mod tests {
 
 // Vec::from_iter((0..5).permutations(4))
 // This is only for performance :)
-const PERMUTATIONS_4: [[u8; 4]; 120] = [
-    [0, 1, 2, 3],
-    [0, 1, 2, 4],
-    [0, 1, 3, 2],
-    [0, 1, 3, 4],
-    [0, 1, 4, 2],
-    [0, 1, 4, 3],
-    [0, 2, 1, 3],
-    [0, 2, 1, 4],
-    [0, 2, 3, 1],
-    [0, 2, 3, 4],
-    [0, 2, 4, 1],
-    [0, 2, 4, 3],
-    [0, 3, 1, 2],
-    [0, 3, 1, 4],
-    [0, 3, 2, 1],
-    [0, 3, 2, 4],
-    [0, 3, 4, 1],
-    [0, 3, 4, 2],
-    [0, 4, 1, 2],
-    [0, 4, 1, 3],
-    [0, 4, 2, 1],
-    [0, 4, 2, 3],
-    [0, 4, 3, 1],
-    [0, 4, 3, 2],
-    [1, 0, 2, 3],
-    [1, 0, 2, 4],
-    [1, 0, 3, 2],
-    [1, 0, 3, 4],
-    [1, 0, 4, 2],
-    [1, 0, 4, 3],
-    [1, 2, 0, 3],
-    [1, 2, 0, 4],
-    [1, 2, 3, 0],
-    [1, 2, 3, 4],
-    [1, 2, 4, 0],
-    [1, 2, 4, 3],
-    [1, 3, 0, 2],
-    [1, 3, 0, 4],
-    [1, 3, 2, 0],
-    [1, 3, 2, 4],
-    [1, 3, 4, 0],
-    [1, 3, 4, 2],
-    [1, 4, 0, 2],
-    [1, 4, 0, 3],
-    [1, 4, 2, 0],
-    [1, 4, 2, 3],
-    [1, 4, 3, 0],
-    [1, 4, 3, 2],
-    [2, 0, 1, 3],
-    [2, 0, 1, 4],
-    [2, 0, 3, 1],
-    [2, 0, 3, 4],
-    [2, 0, 4, 1],
-    [2, 0, 4, 3],
-    [2, 1, 0, 3],
-    [2, 1, 0, 4],
-    [2, 1, 3, 0],
-    [2, 1, 3, 4],
-    [2, 1, 4, 0],
-    [2, 1, 4, 3],
-    [2, 3, 0, 1],
-    [2, 3, 0, 4],
-    [2, 3, 1, 0],
-    [2, 3, 1, 4],
-    [2, 3, 4, 0],
-    [2, 3, 4, 1],
-    [2, 4, 0, 1],
-    [2, 4, 0, 3],
-    [2, 4, 1, 0],
-    [2, 4, 1, 3],
-    [2, 4, 3, 0],
-    [2, 4, 3, 1],
-    [3, 0, 1, 2],
-    [3, 0, 1, 4],
-    [3, 0, 2, 1],
-    [3, 0, 2, 4],
-    [3, 0, 4, 1],
-    [3, 0, 4, 2],
-    [3, 1, 0, 2],
-    [3, 1, 0, 4],
-    [3, 1, 2, 0],
-    [3, 1, 2, 4],
-    [3, 1, 4, 0],
-    [3, 1, 4, 2],
-    [3, 2, 0, 1],
-    [3, 2, 0, 4],
-    [3, 2, 1, 0],
-    [3, 2, 1, 4],
-    [3, 2, 4, 0],
-    [3, 2, 4, 1],
-    [3, 4, 0, 1],
-    [3, 4, 0, 2],
-    [3, 4, 1, 0],
-    [3, 4, 1, 2],
-    [3, 4, 2, 0],
-    [3, 4, 2, 1],
-    [4, 0, 1, 2],
-    [4, 0, 1, 3],
-    [4, 0, 2, 1],
-    [4, 0, 2, 3],
-    [4, 0, 3, 1],
-    [4, 0, 3, 2],
-    [4, 1, 0, 2],
-    [4, 1, 0, 3],
-    [4, 1, 2, 0],
-    [4, 1, 2, 3],
-    [4, 1, 3, 0],
-    [4, 1, 3, 2],
-    [4, 2, 0, 1],
-    [4, 2, 0, 3],
-    [4, 2, 1, 0],
-    [4, 2, 1, 3],
-    [4, 2, 3, 0],
-    [4, 2, 3, 1],
-    [4, 3, 0, 1],
-    [4, 3, 0, 2],
-    [4, 3, 1, 0],
-    [4, 3, 1, 2],
-    [4, 3, 2, 0],
-    [4, 3, 2, 1],
-];
+const PERMUTATIONS_4: [[u8; 4]; 24] = [[0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1], [0, 3, 1, 2], [0, 3, 2, 1], [1, 0, 2, 3], [1, 0, 3, 2], [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0], [2, 0, 1, 3], [2, 0, 3, 1], [2, 1, 0, 3], [2, 1, 3, 0], [2, 3, 0, 1], [2, 3, 1, 0], [3, 0, 1, 2], [3, 0, 2, 1], [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0]];
