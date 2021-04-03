@@ -1,9 +1,8 @@
-use petgraph::graph::{NodeIndex, UnGraph};
+use petgraph::graph::{NodeIndex, Graph};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use petgraph::dot::{Dot};
-use petgraph::algo::is_isomorphic;
-use petgraph::visit::Dfs;
+use petgraph::algo::{is_isomorphic};
 use std::collections::HashMap;
 use std::io::Write;
 use structopt::StructOpt;
@@ -50,8 +49,7 @@ fn instantiate_grid(n: usize) -> (StableGraph<bool, u8, Undirected>, Vec<Vec<((u
 
 fn main() {
     let opt = Opt::from_args();
-    let n = opt.size;
-    let (mut grid, grid_tracker) = instantiate_grid(n);
+    let (grid, grid_tracker) = instantiate_grid(opt.size);
     let mut state = BoardState::new(grid.clone(), Box::new(grid_tracker));
     let value = state.calculate(&mut HashMap::<(usize, usize), usize>::new());
     println!("{}", value);
@@ -63,7 +61,7 @@ fn main() {
 
 struct BoardState {
     grid: StableGraph<bool, u8, Undirected>,
-    grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>>,
+    grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>>, // todo: flatten
 }
 
 impl BoardState {
@@ -80,22 +78,20 @@ impl BoardState {
             return 1
         }
 
-        let mut graph_history: Vec<StableGraph<bool, u8, Undirected>> = vec![];
+        let mut graph_history: Vec<Graph<bool, u8, Undirected>> = vec![];
         let mut values: Vec<usize> = vec![];
         for i in 0..self.grid_tracker.len() {
             'nodeloop: for ((x, y), mut node) in &self.grid_tracker[i] {
                 if self.grid.contains_node(node) { // can make more efficient
-                    let mut new_grid = remove_node(self.grid.clone(), &mut node);
+                    let new_grid = remove_node(self.grid.clone(), &mut node);
                     assert!(new_grid.node_count() < self.grid.node_count()); // defensive
 
-                    /*
                     for graph in &graph_history {
-                        if is_isomorphic(new_grid::<Undirected>::into_graph(), graph::<Undirected>::into_graph()) {
+                        if is_isomorphic(&Graph::from(new_grid.clone()), graph) { // todo: examine diff with/without matching
                             continue 'nodeloop;
                         }
                     }
-                    graph_history.push(new_grid);
-                    */
+                    graph_history.push(Graph::from(new_grid.clone()));
 
                     let value = BoardState::new(new_grid, Box::new(self.grid_tracker.clone())).calculate(coord_history);
                     values.push(value);
@@ -175,9 +171,10 @@ fn mex(values: Vec<usize>) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use crate::{instantiate_grid, mex, remove_node};
+    use crate::{instantiate_grid, mex, remove_node, BoardState};
     use petgraph::dot::{Dot};
     use std::io::Write;
+    use std::collections::HashMap;
 
     #[test]
     fn test_grid_2() {
@@ -204,7 +201,7 @@ mod tests {
     #[test]
     fn test_remove_node_2() {
         let (grid, grid_tracker) = instantiate_grid(2);
-        let mut new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
+        let new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
         assert!(new_grid.node_count() == 0);
         assert!(new_grid.edge_count() == 0);
     }
@@ -213,10 +210,20 @@ mod tests {
     fn test_remove_node_3() {
         let (grid, grid_tracker) = instantiate_grid(3);
 
-        let mut new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
+        let new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
 
         assert!(new_grid.node_count() == 2);
         assert!(new_grid.edge_count() == 1);
     }
 
+    // end to end tests
+
+    #[test]
+    fn test_end() {
+        for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
+            let (grid, grid_tracker) = instantiate_grid(*size);
+            let mut state = BoardState::new(grid.clone(), Box::new(grid_tracker));
+            assert!(state.calculate(&mut HashMap::<(usize, usize), usize>::new())==*sol);
+        }
+    }
 }
