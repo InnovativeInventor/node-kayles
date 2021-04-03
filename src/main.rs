@@ -66,7 +66,7 @@ fn main() {
     let (grid, grid_tracker) = instantiate_grid(opt.size);
 
     let mut state = BoardState::new(grid.clone(), grid_tracker);
-    let value = state.calculate(0, opt.thread_depth - 1);
+    let value = state.calculate(0, opt.thread_depth);
     println!("{}", value);
 
     let mut fs = std::fs::File::create("out.dot").unwrap();
@@ -145,10 +145,14 @@ impl BoardState {
             }
         }
 
-        if level < thread_depth {
+        if level <= thread_depth {
             for (x, y, handle) in handles {
                 let value = handle.join().unwrap();
-                diagram.insert((x, y), value.clone());
+
+                if level == 0 {
+                    diagram.insert((x, y), value.clone());
+                }
+
                 values.push(value);
             }
         }
