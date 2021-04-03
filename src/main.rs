@@ -51,7 +51,7 @@ fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.size);
     let mut state = BoardState::new(grid.clone(), Box::new(grid_tracker));
-    let value = state.calculate(&mut HashMap::<(usize, usize), usize>::new());
+    let value = state.calculate(true);
     println!("{}", value);
 
     let mut fs = std::fs::File::create("out.dot").unwrap();
@@ -71,7 +71,7 @@ impl BoardState {
             grid_tracker: *grid_tracker
         }
     }
-    fn calculate(&mut self, coord_history: &mut HashMap<(usize, usize), usize>) -> usize {
+    fn calculate(&mut self, verbose: bool) -> usize {
         if self.grid.node_count() == 0 && self.grid.edge_count() == 0 {
             return 0
         } else if self.grid.node_count() == 1 {
@@ -80,6 +80,7 @@ impl BoardState {
 
         let mut graph_history: Vec<Graph<bool, u8, Undirected>> = vec![];
         let mut values: Vec<usize> = vec![];
+        let mut diagram = HashMap::<(usize, usize), usize>::new();
         for i in 0..self.grid_tracker.len() {
             'nodeloop: for ((x, y), mut node) in &self.grid_tracker[i] {
                 if self.grid.contains_node(node) { // can make more efficient
@@ -93,10 +94,14 @@ impl BoardState {
                     }
                     graph_history.push(Graph::from(new_grid.clone()));
 
-                    let value = BoardState::new(new_grid, Box::new(self.grid_tracker.clone())).calculate(coord_history);
+                    let value = BoardState::new(new_grid, Box::new(self.grid_tracker.clone())).calculate(false);
+                    diagram.insert((*x, *y), value.clone());
                     values.push(value);
                 }
             }
+        }
+        if verbose {
+            println!("{:?}", diagram);
         }
         return mex(values);
     }
@@ -223,7 +228,7 @@ mod tests {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
             let (grid, grid_tracker) = instantiate_grid(*size);
             let mut state = BoardState::new(grid.clone(), Box::new(grid_tracker));
-            assert!(state.calculate(&mut HashMap::<(usize, usize), usize>::new())==*sol);
+            assert!(state.calculate(true)==*sol);
         }
     }
 }
