@@ -217,16 +217,13 @@ fn remove_node(
             }
 
             if edge_map.contains_key(&weight) {
-                let mut same_weight_neighbors = edge_map.get(&weight).unwrap().clone();
-                for other_seen_node in &same_weight_neighbors {
-                    grid.add_edge(other_node, *other_seen_node, weight.clone());
+                let same_weight_neighbors = edge_map.get_mut(&weight).unwrap();
+                for k in 0..same_weight_neighbors.len() {
+                    grid.add_edge(other_node, same_weight_neighbors[k], weight);
                 }
                 same_weight_neighbors.push(other_node);
-                edge_map
-                    .entry(weight.clone())
-                    .or_insert(same_weight_neighbors.to_vec());
             } else {
-                edge_map.insert(weight.clone(), vec![other_node]);
+                edge_map.insert(weight, vec![other_node]);
             }
         }
     }
