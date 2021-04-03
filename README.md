@@ -1,4 +1,6 @@
 ## non-attacking-queens
+[![Rust tests](https://github.com/InnovativeInventor/non-attacking-queens/actions/workflows/test.yaml/badge.svg)](https://github.com/InnovativeInventor/non-attacking-queens/actions/workflows/test.yaml)
+
 Some calculations for the [non attacking queens](https://www.maa.org/sites/default/files/may_2006_-_noon55524.pdf) problem.
 
 ## Building and Running (with release)
