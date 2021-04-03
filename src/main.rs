@@ -139,9 +139,11 @@ fn remove_node(mut grid: StableGraph<bool, u8, Undirected>, node: &mut NodeIndex
         let mut edge_map: HashMap<u8, Vec<NodeIndex>> = HashMap::new();
         let mut curr_walker = grid.neighbors(curr_node).detach();
         while let Some((edge, other_node)) = curr_walker.next(&grid) {
+            /*
             if followed_nodes.contains(&other_node) {
                 continue // skip
             }
+            */
 
             let weight = grid.edge_weight(edge).unwrap().clone();
 
