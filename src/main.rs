@@ -151,7 +151,7 @@ impl BoardState {
         let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = Vec::new();
         /*
         let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = Vec::with_capacity(0);
-        if level <= thread_depth { // for performance
+        if level < thread_depth { // for performance
             handles.reserve_exact(self.grid.node_count());
         }
         */
@@ -193,7 +193,7 @@ impl BoardState {
                     }
                     graph_history.push(grid_graph);
 
-                    if level <= thread_depth {
+                    if level < thread_depth {
                         handles.push((
                             *x,
                             *y,
@@ -226,7 +226,7 @@ impl BoardState {
             return None;
         }
 
-        if level <= thread_depth {
+        if level < thread_depth {
             for (x, y, handle) in handles {
                 let value = handle.join().unwrap();
 
