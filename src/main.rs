@@ -1,4 +1,5 @@
 #![feature(test)]
+#![feature(available_concurrency)]
 #![feature(type_ascription)]
 
 /*
@@ -16,7 +17,8 @@ use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::{thread, time};
 use structopt::StructOpt;
 
 extern crate test;
@@ -89,7 +91,7 @@ fn main() {
         None => BoardState::new(grid.clone(), grid_tracker),
     };
 
-    let value = state.calculate(0, opt.thread_depth, opt.dist_level);
+    let value = state.calculate(0, opt.thread_depth, opt.dist_level, Arc::new(Mutex::new(0)));
     if value.is_some() {
         println!("{}", value.unwrap());
     } else {
@@ -137,7 +139,7 @@ impl BoardState {
             grid_tracker: grid_tracker,
         }
     }
-    fn calculate(&mut self, level: usize, thread_depth: usize, dist_level: usize) -> Option<usize> {
+    fn calculate(&mut self, level: usize, thread_depth: usize, dist_level: usize, thread_count: Arc<Mutex<usize>>) -> Option<usize> {
         if self.grid.node_count() == 0 {
             return Some(0);
         } else if self.grid.node_count() == 1 {
@@ -194,6 +196,17 @@ impl BoardState {
                     graph_history.push(grid_graph);
 
                     if level < thread_depth {
+                        let mut blocked = true;
+                        while blocked {
+                            let mut thread_count = thread_count.lock().unwrap();
+                            if *thread_count < std::thread::available_concurrency().unwrap().get() { // todo: make const
+                                blocked = false;
+                                *thread_count += 1;
+                            } else {
+                                std::thread::sleep(time::Duration::from_millis(100));
+                            }
+                        }
+
                         handles.push((
                             *x,
                             *y,
@@ -202,7 +215,10 @@ impl BoardState {
                                     level + 1,
                                     thread_depth,
                                     dist_level,
+                                    thread_count.clone()
                                 );
+                                let mut thread_count = thread_count.clone().lock().unwrap();
+                                *thread_count -= 1;
                                 value
                             }),
                         ));
@@ -211,6 +227,7 @@ impl BoardState {
                             level + 1,
                             thread_depth,
                             dist_level,
+                            thread_count
                         );
                         if value.is_some() {
                             values.push(value.unwrap());
