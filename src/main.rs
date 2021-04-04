@@ -9,12 +9,10 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use petgraph::algo::is_isomorphic_matching;
-use petgraph::dot::Dot;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use std::collections::HashMap;
-use std::io::Write;
 use std::sync::Arc;
 use structopt::StructOpt;
 
@@ -33,20 +31,20 @@ struct Opt {
     thread_depth: usize,
 }
 
-// The graph is represented by nodes that have a bool (alive or dead) and a edges with a byte
+// The graph is represented by edges with a byte:
 // 0: - , 1: |, 2: \, 3: /
 fn instantiate_grid(
     n: usize,
 ) -> (
-    StableGraph<bool, u8, Undirected>,
+    StableGraph<(), u8, Undirected>,
     Arc<Vec<Vec<((usize, usize), NodeIndex)>>>,
 ) {
-    let mut grid = StableGraph::<bool, u8, Undirected>::default();
+    let mut grid = StableGraph::<(), u8, Undirected>::default();
     let mut grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>> = vec![];
     for i in 0..n {
         let mut row = vec![];
         for j in 0..n {
-            row.push(((i, j), grid.add_node(true)));
+            row.push(((i, j), grid.add_node(())));
             if j > 0 {
                 grid.update_edge(row[j - 1].1, row[j].1, 0);
             }
@@ -76,20 +74,16 @@ fn main() {
     let mut state = BoardState::new(grid.clone(), grid_tracker);
     let value = state.calculate(0, opt.thread_depth);
     println!("{}", value);
-
-    let mut fs = std::fs::File::create("out.dot").unwrap();
-    fs.write_all(format!("{}", Dot::new(&grid)).as_bytes())
-        .unwrap();
 }
 
 struct BoardState {
-    grid: StableGraph<bool, u8, Undirected>,
+    grid: StableGraph<(), u8, Undirected>,
     grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>, // todo: flatten
 }
 
 impl BoardState {
     fn new(
-        grid: StableGraph<bool, u8, Undirected>,
+        grid: StableGraph<(), u8, Undirected>,
         grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>,
     ) -> Self {
         Self {
@@ -105,7 +99,7 @@ impl BoardState {
             return 1;
         }
 
-        let mut graph_history: Vec<Graph<bool, u8, Undirected>> = vec![];
+        let mut graph_history: Vec<Graph<(), u8, Undirected>> = vec![];
         let mut values: Vec<usize> = vec![];
         let mut diagram = HashMap::<(usize, usize), usize>::new();
         let mut handles: Vec<(usize, usize, std::thread::JoinHandle<usize>)> = vec![];
@@ -175,9 +169,9 @@ impl BoardState {
 }
 
 fn remove_node(
-    mut grid: StableGraph<bool, u8, Undirected>,
+    mut grid: StableGraph<(), u8, Undirected>,
     node: &mut NodeIndex,
-) -> StableGraph<bool, u8, Undirected> {
+) -> StableGraph<(), u8, Undirected> {
     let mut followed_nodes: Vec<(u8, NodeIndex)> = vec![];
     for weight in 0..4 {
         let mut directional_followed_nodes: Vec<(u8, NodeIndex)> = vec![(0, *node), (1, *node), (2, *node), (3, *node)];
