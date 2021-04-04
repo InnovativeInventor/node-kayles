@@ -1,8 +1,12 @@
 #![feature(test)]
 
-extern crate jemallocator;
+/*
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+*/
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use petgraph::algo::is_isomorphic_matching;
 use petgraph::dot::Dot;
