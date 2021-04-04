@@ -12,12 +12,12 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use petgraph::algo::is_isomorphic_matching;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
-use petgraph::{Undirected};
-use std::collections::HashMap;
-use structopt::StructOpt;
+use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::collections::HashMap;
 use std::fs::File;
+use std::sync::Arc;
+use structopt::StructOpt;
 
 extern crate test;
 
@@ -83,8 +83,10 @@ fn main() {
     let (grid, grid_tracker) = instantiate_grid(opt.size);
 
     let mut state = match opt.read {
-        Some(name) => BoardState::from(serde_cbor::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw),
-        None => BoardState::new(grid.clone(), grid_tracker)
+        Some(name) => BoardState::from(
+            serde_cbor::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw,
+        ),
+        None => BoardState::new(grid.clone(), grid_tracker),
     };
 
     let value = state.calculate(0, opt.thread_depth, opt.dist_level);
@@ -101,7 +103,7 @@ struct BoardState {
 }
 
 impl From<BoardStateRaw> for BoardState {
-    fn from(state: BoardStateRaw) -> Self { 
+    fn from(state: BoardStateRaw) -> Self {
         BoardState {
             grid: state.grid,
             grid_tracker: Arc::new(state.grid_tracker),
@@ -120,7 +122,7 @@ impl From<BoardState> for BoardStateRaw {
         let grid_tracker = &*state.grid_tracker;
         BoardStateRaw {
             grid: state.grid,
-            grid_tracker: grid_tracker.clone()
+            grid_tracker: grid_tracker.clone(),
         }
     }
 }
@@ -136,7 +138,6 @@ impl BoardState {
         }
     }
     fn calculate(&mut self, level: usize, thread_depth: usize, dist_level: usize) -> Option<usize> {
-
         if self.grid.node_count() == 0 {
             return Some(0);
         } else if self.grid.node_count() == 1 {
@@ -155,16 +156,21 @@ impl BoardState {
                     let new_grid = remove_node(self.grid.clone(), &mut node);
                     let grid_tracker = self.grid_tracker.clone();
 
-                    if dist_level == level+1 {
-                        let name = format!("progress.{}.{}-{}.cbor", level, x, y); 
+                    if dist_level == level + 1 {
+                        let name = format!("progress.{}.{}-{}.cbor", level, x, y);
                         let fs = File::create(name.clone()).unwrap();
-                        serde_cbor::to_writer(fs, &BoardStateRaw::from(BoardState::new(new_grid, grid_tracker))).expect(format!("Failed to serialize {}!", name).as_str());
-                        continue
+                        serde_cbor::to_writer(
+                            fs,
+                            &BoardStateRaw::from(BoardState::new(new_grid, grid_tracker)),
+                        )
+                        .expect(format!("Failed to serialize {}!", name).as_str());
+                        continue;
                     }
 
                     let grid_graph = Graph::from(new_grid.clone());
                     for graph in &graph_history {
-                        if graph.edge_count() == grid_graph.edge_count() { // todo: measure if actually faster
+                        if graph.edge_count() == grid_graph.edge_count() {
+                            // todo: measure if actually faster
                             for perms in &PERMUTATIONS_4 {
                                 if is_isomorphic_matching(
                                     &grid_graph,
@@ -185,26 +191,32 @@ impl BoardState {
                             *x,
                             *y,
                             std::thread::spawn(move || {
-                                let value = BoardState::new(new_grid, grid_tracker)
-                                    .calculate(level + 1, thread_depth, dist_level);
+                                let value = BoardState::new(new_grid, grid_tracker).calculate(
+                                    level + 1,
+                                    thread_depth,
+                                    dist_level,
+                                );
                                 value
                             }),
                         ));
                     } else {
-                        let value = BoardState::new(new_grid, grid_tracker)
-                            .calculate(level + 1, thread_depth, dist_level);
+                        let value = BoardState::new(new_grid, grid_tracker).calculate(
+                            level + 1,
+                            thread_depth,
+                            dist_level,
+                        );
                         if value.is_some() {
                             values.push(value.unwrap());
                         } else {
-                            return None
+                            return None;
                         }
                     }
                 }
             }
         }
 
-        if dist_level == level+1 {
-            return None
+        if dist_level == level + 1 {
+            return None;
         }
 
         if level <= thread_depth {
@@ -220,7 +232,7 @@ impl BoardState {
 
                     values.push(nimber);
                 } else {
-                    return None
+                    return None;
                 }
             }
         }
@@ -239,7 +251,8 @@ fn remove_node(
 ) -> StableGraph<(), u8, Undirected> {
     let mut followed_nodes: Vec<(u8, NodeIndex)> = vec![];
     for weight in 0..4 {
-        let mut directional_followed_nodes: Vec<(u8, NodeIndex)> = vec![(0, *node), (1, *node), (2, *node), (3, *node)];
+        let mut directional_followed_nodes: Vec<(u8, NodeIndex)> =
+            vec![(0, *node), (1, *node), (2, *node), (3, *node)];
         let mut stop = false;
         while stop == false {
             stop = true;
@@ -281,7 +294,7 @@ fn remove_node(
             let weight = grid.edge_weight(edge).unwrap().clone();
 
             if weight == curr_weight {
-                continue
+                continue;
             }
 
             if edge_map.contains_key(&weight) {
@@ -322,7 +335,7 @@ fn mex(values: Vec<usize>) -> usize {
 
     // faster
     while values.contains(&min) {
-         min += 1;
+        min += 1;
     }
 
     return min;
@@ -414,7 +427,7 @@ mod tests {
 
     #[bench]
     fn bench_mex(b: &mut Bencher) {
-        let test_vec = vec![3,3,9,2,0,9,8,4,2,7];
+        let test_vec = vec![3, 3, 9, 2, 0, 9, 8, 4, 2, 7];
         b.iter(|| {
             mex(test_vec.clone());
         });
@@ -423,4 +436,29 @@ mod tests {
 
 // Vec::from_iter((0..5).permutations(4))
 // This is only for performance :)
-const PERMUTATIONS_4: [[u8; 4]; 24] = [[0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1], [0, 3, 1, 2], [0, 3, 2, 1], [1, 0, 2, 3], [1, 0, 3, 2], [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0], [2, 0, 1, 3], [2, 0, 3, 1], [2, 1, 0, 3], [2, 1, 3, 0], [2, 3, 0, 1], [2, 3, 1, 0], [3, 0, 1, 2], [3, 0, 2, 1], [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0]];
+const PERMUTATIONS_4: [[u8; 4]; 24] = [
+    [0, 1, 2, 3],
+    [0, 1, 3, 2],
+    [0, 2, 1, 3],
+    [0, 2, 3, 1],
+    [0, 3, 1, 2],
+    [0, 3, 2, 1],
+    [1, 0, 2, 3],
+    [1, 0, 3, 2],
+    [1, 2, 0, 3],
+    [1, 2, 3, 0],
+    [1, 3, 0, 2],
+    [1, 3, 2, 0],
+    [2, 0, 1, 3],
+    [2, 0, 3, 1],
+    [2, 1, 0, 3],
+    [2, 1, 3, 0],
+    [2, 3, 0, 1],
+    [2, 3, 1, 0],
+    [3, 0, 1, 2],
+    [3, 0, 2, 1],
+    [3, 1, 0, 2],
+    [3, 1, 2, 0],
+    [3, 2, 0, 1],
+    [3, 2, 1, 0],
+];
