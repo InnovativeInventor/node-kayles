@@ -13,7 +13,6 @@ use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use std::collections::HashMap;
-use std::sync::Arc;
 use structopt::StructOpt;
 
 extern crate test;
@@ -33,11 +32,8 @@ struct Opt {
 
 // The graph is represented by edges with a byte:
 // 0: - , 1: |, 2: \, 3: /
-fn instantiate_grid(
-    n: usize,
-) -> (
-    StableGraph<(), u8, Undirected>,
-    Arc<Vec<Vec<((usize, usize), NodeIndex)>>>,
+fn instantiate_grid(n: usize) -> (
+    StableGraph<(), u8, Undirected>
 ) {
     let mut grid = StableGraph::<(), u8, Undirected>::default();
     let mut grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>> = vec![];
@@ -64,31 +60,28 @@ fn instantiate_grid(
         grid_tracker.push(row);
     }
 
-    return (grid, Arc::new(grid_tracker));
+    return grid;
 }
 
 fn main() {
     let opt = Opt::from_args();
-    let (grid, grid_tracker) = instantiate_grid(opt.size);
+    let grid = instantiate_grid(opt.size);
 
-    let mut state = BoardState::new(grid.clone(), grid_tracker);
+    let mut state = BoardState::new(grid.clone());
     let value = state.calculate(0, opt.thread_depth);
     println!("{}", value);
 }
 
 struct BoardState {
     grid: StableGraph<(), u8, Undirected>,
-    grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>, // todo: flatten
 }
 
 impl BoardState {
     fn new(
         grid: StableGraph<(), u8, Undirected>,
-        grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>,
     ) -> Self {
         Self {
             grid: grid,
-            grid_tracker: grid_tracker,
         }
     }
     fn calculate(&mut self, level: usize, thread_depth: usize) -> usize {
@@ -101,69 +94,49 @@ impl BoardState {
 
         let mut graph_history: Vec<Graph<(), u8, Undirected>> = vec![];
         let mut values: Vec<usize> = vec![];
-        let mut diagram = HashMap::<(usize, usize), usize>::new();
-        let mut handles: Vec<(usize, usize, std::thread::JoinHandle<usize>)> = vec![];
 
-        for i in 0..self.grid_tracker.len() {
-            'nodeloop: for ((x, y), mut node) in &self.grid_tracker[i] {
-                if self.grid.contains_node(node) {
-                    // can make more efficient
-                    let new_grid = remove_node(self.grid.clone(), &mut node);
+        let mut handles: Vec<std::thread::JoinHandle<usize>> = vec![];
+        'nodeloop: for mut node in self.grid.node_indices() {
+            let new_grid = remove_node(self.grid.clone(), &mut node);
 
-                    let grid_graph = Graph::from(new_grid.clone());
-                    for graph in &graph_history {
-                        if graph.edge_count() == grid_graph.edge_count() { // todo: measure if actually faster
-                            for perms in &PERMUTATIONS_4 {
-                                if is_isomorphic_matching(
-                                    &grid_graph,
-                                    graph,
-                                    |_x, _y| true,
-                                    |x, y| &perms[*x as usize] == y,
-                                ) {
-                                    // todo: examine diff with/without matching
-                                    continue 'nodeloop;
-                                }
-                            }
+            let grid_graph = Graph::from(new_grid.clone());
+            for graph in &graph_history {
+                if graph.edge_count() == grid_graph.edge_count() && graph.node_count() == graph.node_count() { // todo: measure if actually faster
+                    for perms in &PERMUTATIONS_4 {
+                        if is_isomorphic_matching(
+                            &grid_graph,
+                            graph,
+                            |_x, _y| true,
+                            |x, y| &perms[*x as usize] == y,
+                        ) {
+                            continue 'nodeloop;
                         }
-                    }
-                    graph_history.push(grid_graph);
-
-                    let grid_tracker = self.grid_tracker.clone();
-                    if level < thread_depth {
-                        handles.push((
-                            *x,
-                            *y,
-                            std::thread::spawn(move || {
-                                let value = BoardState::new(new_grid, grid_tracker)
-                                    .calculate(level + 1, thread_depth);
-                                value
-                            }),
-                        ));
-                    } else {
-                        let value = BoardState::new(new_grid, grid_tracker)
-                            .calculate(level + 1, thread_depth);
-                        values.push(value);
                     }
                 }
             }
-        }
+            graph_history.push(grid_graph);
 
-        if level <= thread_depth {
-            for (x, y, handle) in handles {
-                let value = handle.join().unwrap();
-
-                if level == 0 {
-                    diagram.insert((x, y), value.clone());
-                }
-
+            if level < thread_depth {
+                handles.push(
+                    std::thread::spawn(move || {
+                        let value = BoardState::new(new_grid)
+                            .calculate(level + 1, thread_depth);
+                        value
+                    })
+                );
+            } else {
+                let value = BoardState::new(new_grid)
+                    .calculate(level + 1, thread_depth);
                 values.push(value);
             }
         }
+        if level < thread_depth{
+            for handle in handles {
+                let value = handle.join().unwrap();
 
-        if level == 0 {
-            println!("{:?}", diagram);
-        }
-
+                values.push(value);
+            }
+        } 
         return mex(values);
     }
 }
