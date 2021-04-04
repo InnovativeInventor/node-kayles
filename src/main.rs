@@ -288,7 +288,7 @@ fn remove_node(
         }
     }
 
-    let mut edge_map: HashMap<u8, Vec<NodeIndex>> = HashMap::new();
+    let mut edge_map: HashMap<u8, Vec<NodeIndex>> = HashMap::with_capacity(4);
     for curr_node_index in 0..followed_nodes.len() {
         edge_map.clear();
         // stitch
