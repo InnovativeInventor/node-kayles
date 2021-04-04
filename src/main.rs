@@ -91,7 +91,7 @@ impl BoardState {
     }
     fn calculate(&mut self, level: usize, thread_depth: usize) -> usize {
 
-        if self.grid.node_count() == 0 && self.grid.edge_count() == 0 {
+        if self.grid.node_count() == 0 {
             return 0;
         } else if self.grid.node_count() == 1 {
             return 1;
@@ -107,19 +107,20 @@ impl BoardState {
                 if self.grid.contains_node(node) {
                     // can make more efficient
                     let new_grid = remove_node(self.grid.clone(), &mut node);
-                    // assert!(new_grid.node_count() < self.grid.node_count()); // defensive
 
                     let grid_graph = Graph::from(new_grid.clone());
                     for graph in &graph_history {
-                        for perms in &PERMUTATIONS_4 {
-                            if is_isomorphic_matching(
-                                &grid_graph,
-                                graph,
-                                |_x, _y| true,
-                                |x, y| &perms[*x as usize] == y,
-                            ) {
-                                // todo: examine diff with/without matching
-                                continue 'nodeloop;
+                        if graph.edge_count() == grid_graph.edge_count() { // todo: measure if actually faster
+                            for perms in &PERMUTATIONS_4 {
+                                if is_isomorphic_matching(
+                                    &grid_graph,
+                                    graph,
+                                    |_x, _y| true,
+                                    |x, y| &perms[*x as usize] == y,
+                                ) {
+                                    // todo: examine diff with/without matching
+                                    continue 'nodeloop;
+                                }
                             }
                         }
                     }
