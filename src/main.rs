@@ -1,10 +1,12 @@
 #![feature(test)]
 
-use petgraph::algo::is_isomorphic_matching;
+// use petgraph::algo::is_isomorphic_matching;
+use petgraph::algo::is_isomorphic_edge_labeling;
 use petgraph::dot::Dot;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
+use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
@@ -62,11 +64,20 @@ fn instantiate_grid(
 }
 
 fn main() {
+    let mut permutes = vec![];
+    for perm in (0..5).permutations(4) {
+        let mut mapping: HashMap<u8, u8> = HashMap::new();
+        for i in 0..perm.len() {
+            mapping.insert(i as u8, perm[i]);
+        }
+        permutes.push(mapping);
+    }
+
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.size);
 
     let mut state = BoardState::new(grid.clone(), grid_tracker);
-    let value = state.calculate(0, opt.thread_depth);
+    let value = state.calculate(0, opt.thread_depth, Arc::new(permutes));
     println!("{}", value);
 
     let mut fs = std::fs::File::create("out.dot").unwrap();
@@ -89,7 +100,7 @@ impl BoardState {
             grid_tracker: grid_tracker,
         }
     }
-    fn calculate(&mut self, level: usize, thread_depth: usize) -> usize {
+    fn calculate(&mut self, level: usize, thread_depth: usize, permutations: Arc<Vec<HashMap<u8, u8>>>) -> usize {
 
         if self.grid.node_count() == 0 && self.grid.edge_count() == 0 {
             return 0;
@@ -111,6 +122,10 @@ impl BoardState {
 
                     let grid_graph = Graph::from(new_grid.clone());
                     for graph in &graph_history {
+                        if is_isomorphic_edge_labeling(&grid_graph, graph, permutations.clone()) {
+                            continue 'nodeloop;
+                        }
+                        /*
                         for perms in &PERMUTATIONS_4 {
                             if is_isomorphic_matching(
                                 &grid_graph,
@@ -122,23 +137,25 @@ impl BoardState {
                                 continue 'nodeloop;
                             }
                         }
+                        */
                     }
                     graph_history.push(grid_graph);
 
                     let grid_tracker = self.grid_tracker.clone();
+                    let new_permutation = permutations.clone();
                     if level < thread_depth {
                         handles.push((
                             *x,
                             *y,
                             std::thread::spawn(move || {
                                 let value = BoardState::new(new_grid, grid_tracker)
-                                    .calculate(level + 1, thread_depth);
+                                    .calculate(level + 1, thread_depth, new_permutation);
                                 value
                             }),
                         ));
                     } else {
                         let value = BoardState::new(new_grid, grid_tracker)
-                            .calculate(level + 1, thread_depth);
+                            .calculate(level + 1, thread_depth, new_permutation);
                         values.push(value);
                     }
                 }
@@ -355,4 +372,8 @@ mod tests {
 
 // Vec::from_iter((0..5).permutations(4))
 // This is only for performance :)
+/*
 const PERMUTATIONS_4: [[u8; 4]; 24] = [[0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1], [0, 3, 1, 2], [0, 3, 2, 1], [1, 0, 2, 3], [1, 0, 3, 2], [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0], [2, 0, 1, 3], [2, 0, 3, 1], [2, 1, 0, 3], [2, 1, 3, 0], [2, 3, 0, 1], [2, 3, 1, 0], [3, 0, 1, 2], [3, 0, 2, 1], [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0]];
+*/
+
+
