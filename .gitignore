@@ -2,3 +2,4 @@
 out.dot
 out.dot.png
 progress.*
+flamegraph.svg

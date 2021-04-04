@@ -50,8 +50,8 @@ fn instantiate_grid(
     StableGraph<(), u8, Undirected>,
     Arc<Vec<Vec<((usize, usize), NodeIndex)>>>,
 ) {
-    let mut grid = StableGraph::<(), u8, Undirected>::default();
-    let mut grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>> = vec![];
+    let mut grid = StableGraph::<(), u8, Undirected>::with_capacity(n*n, n*(n+1));
+    let mut grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>> = Vec::with_capacity(n*n);
     for i in 0..n {
         let mut row = vec![];
         for j in 0..n {
@@ -144,10 +144,17 @@ impl BoardState {
             return Some(1);
         }
 
-        let mut graph_history: Vec<Graph<(), u8, Undirected>> = vec![];
-        let mut values: Vec<usize> = vec![];
+        let mut graph_history: Vec<Graph<(), u8, Undirected>> = Vec::with_capacity(self.grid.node_count());
+        let mut values: Vec<usize> = Vec::with_capacity(self.grid.node_count());
         let mut diagram = HashMap::<(usize, usize), usize>::new();
-        let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = vec![];
+
+        let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = Vec::new();
+        /*
+        let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = Vec::with_capacity(0);
+        if level <= thread_depth { // for performance
+            handles.reserve_exact(self.grid.node_count());
+        }
+        */
 
         for i in 0..self.grid_tracker.len() {
             'nodeloop: for ((x, y), mut node) in &self.grid_tracker[i] {
@@ -249,10 +256,13 @@ fn remove_node(
     mut grid: StableGraph<(), u8, Undirected>,
     node: &mut NodeIndex,
 ) -> StableGraph<(), u8, Undirected> {
-    let mut followed_nodes: Vec<(u8, NodeIndex)> = vec![];
+    let mut followed_nodes: Vec<(u8, NodeIndex)> = Vec::with_capacity(grid.node_count());
+    let mut directional_followed_nodes: Vec<(u8, NodeIndex)> = vec![];
+
     for weight in 0..4 {
-        let mut directional_followed_nodes: Vec<(u8, NodeIndex)> =
-            vec![(0, *node), (1, *node), (2, *node), (3, *node)];
+        directional_followed_nodes.clear();
+        directional_followed_nodes.push((weight, *node));
+
         let mut stop = false;
         while stop == false {
             stop = true;
@@ -271,18 +281,19 @@ fn remove_node(
         }
 
         // add back in, note: can make more efficient
-        for index in directional_followed_nodes {
-            if !followed_nodes.contains(&index) {
-                followed_nodes.push(index);
+        for index in &directional_followed_nodes {
+            if !followed_nodes.contains(index) {
+                followed_nodes.push(*index);
             }
         }
     }
 
+    let mut edge_map: HashMap<u8, Vec<NodeIndex>> = HashMap::new();
     for curr_node_index in 0..followed_nodes.len() {
+        edge_map.clear();
         // stitch
         let (curr_weight, curr_node) = followed_nodes[curr_node_index];
 
-        let mut edge_map: HashMap<u8, Vec<NodeIndex>> = HashMap::new();
         let mut curr_walker = grid.neighbors(curr_node).detach();
         while let Some((edge, other_node)) = curr_walker.next(&grid) {
             /*
@@ -394,7 +405,7 @@ mod tests {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
             let (grid, grid_tracker) = instantiate_grid(*size);
             let mut state = BoardState::new(grid.clone(), grid_tracker);
-            assert!(state.calculate(0, 0, 0) == *sol);
+            assert!(state.calculate(0, 0, 0) == Some(*sol));
         }
     }
 
@@ -403,7 +414,7 @@ mod tests {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
             let (grid, grid_tracker) = instantiate_grid(*size);
             let mut state = BoardState::new(grid.clone(), grid_tracker);
-            assert!(state.calculate(0, 3, 0) == *sol);
+            assert!(state.calculate(0, 3, 0) == Some(*sol));
         }
     }
 
