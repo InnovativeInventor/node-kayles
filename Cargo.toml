@@ -7,12 +7,15 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-petgraph="0.5.1"
-ndarray="0.15.1"
-structopt="0.3.21"
-itertools="0.10.0"
-# jemallocator="0.3.2"
+# petgraph = { version = "0.5.3", features = ["serde-1"], git = "https://github.com/InnovativeInventor/petgraph", branch = "origin/serde"}
+petgraph = { version = "0.5.1", features = ["serde-1"]}
+ndarray = "0.15.1"
+structopt = "0.3.21"
+itertools = "0.10.0"
+# jemallocator = "0.3.2"
 mimalloc = { version = "*", default-features = false }
+serde_cbor = "0.11.1"
+serde = { version = "1.0.125", features = ["derive"] }
 
 [profile.release]
 # debug = true
