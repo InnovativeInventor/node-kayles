@@ -9,7 +9,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use petgraph::algo::is_isomorphic_matching;
-use petgraph::graph::{Graph, NodeIndex};
+use petgraph::graph::{Graph, NodeIndex, EdgeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use std::collections::HashMap;
@@ -99,7 +99,7 @@ impl BoardState {
             return 1;
         }
 
-        let mut graph_history: Vec<Graph<(), u8, Undirected>> = vec![];
+        let mut graph_history: Vec<(Graph<(), u8, Undirected>, HashMap<EdgeIndex, u8>)> = vec![];
         let mut values: Vec<usize> = vec![];
         let mut diagram = HashMap::<(usize, usize), usize>::new();
         let mut handles: Vec<(usize, usize, std::thread::JoinHandle<usize>)> = vec![];
@@ -110,9 +110,15 @@ impl BoardState {
                     // can make more efficient
                     let new_grid = remove_node(self.grid.clone(), &mut node);
 
+                    let mut edge_count: HashMap<EdgeIndex, u8> = HashMap::new();
+                    for edge in new_grid.edge_indices() {
+                        let counter = edge_count.entry(edge).or_insert(0);
+                        *counter += 1;
+                    }
+
                     let grid_graph = Graph::from(new_grid.clone());
-                    for graph in &graph_history {
-                        if graph.edge_count() == grid_graph.edge_count() { // todo: measure if actually faster
+                    for (graph, graph_edge_counts) in &graph_history {
+                        if &edge_count == graph_edge_counts {
                             for perms in &PERMUTATIONS_4 {
                                 if is_isomorphic_matching(
                                     &grid_graph,
@@ -126,7 +132,7 @@ impl BoardState {
                             }
                         }
                     }
-                    graph_history.push(grid_graph);
+                    graph_history.push((grid_graph, edge_count));
 
                     let grid_tracker = self.grid_tracker.clone();
                     if level < thread_depth {
