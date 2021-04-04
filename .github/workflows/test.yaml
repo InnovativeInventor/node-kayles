@@ -19,3 +19,5 @@ jobs:
       run: |
         cargo test --verbose
         cargo bench --verbose
+        bash release.sh
+        time ./target/release/non-attacking-queens --size 8
