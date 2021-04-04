@@ -1,5 +1,9 @@
 #![feature(test)]
 
+extern crate jemallocator;
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 use petgraph::algo::is_isomorphic_matching;
 use petgraph::dot::Dot;
 use petgraph::graph::{Graph, NodeIndex};

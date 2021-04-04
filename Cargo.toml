@@ -11,6 +11,7 @@ petgraph="0.5.1"
 ndarray="0.15.1"
 structopt="0.3.21"
 itertools="0.10.0"
+jemallocator="0.3.2"
 
 [profile.release]
 # debug = true
