@@ -14,10 +14,11 @@ use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs::File;
+use hashbrown::HashMap;
 use std::sync::Arc;
 use structopt::StructOpt;
+use std::sync::RwLock;
 
 extern crate test;
 
@@ -81,17 +82,32 @@ fn instantiate_grid(
 fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.size);
+    let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::with_capacity(80000));
+    // let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new());
 
     let mut state = match opt.read {
         Some(name) => BoardState::from(
             serde_cbor::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw,
         ),
-        None => BoardState::new(grid.clone(), grid_tracker),
+        None => BoardState::new(grid.clone(), grid_tracker, Arc::new(history)),
     };
 
-    let value = state.calculate(0, opt.thread_depth, opt.dist_level);
+    let value = state.calculate(0, opt.thread_depth, opt.dist_level, vec![]);
     if value.is_some() {
-        println!("{}", value.unwrap());
+        let history = state.history.read().unwrap();
+        print!("Table: {{");
+        for i in 0..opt.size {
+            for j in 0..opt.size {
+                if history.contains_key(&vec![(i,j)]) {
+                    print!("{:?}: {},", (i, j), history.get(&vec![(i,j)]).unwrap());
+                } else if history.contains_key(&vec![(j,i)]) {
+                    print!("{:?}: {},", (j, i), history.get(&vec![(j,i)]).unwrap());
+                }
+            }
+        }
+        print!("}}\n");
+        println!("Nimber: {}", value.unwrap());
+        println!("Size of lookup table: {}", history.len());
     } else {
         println!("Progress saved to disk");
     }
@@ -100,6 +116,7 @@ fn main() {
 struct BoardState {
     grid: StableGraph<(), u8, Undirected>,
     grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>, // todo: flatten
+    history: Arc<RwLock<HashMap<Vec<(usize, usize)>, usize>>>
 }
 
 impl From<BoardStateRaw> for BoardState {
@@ -107,6 +124,7 @@ impl From<BoardStateRaw> for BoardState {
         BoardState {
             grid: state.grid,
             grid_tracker: Arc::new(state.grid_tracker),
+            history: Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())),
         }
     }
 }
@@ -131,13 +149,15 @@ impl BoardState {
     fn new(
         grid: StableGraph<(), u8, Undirected>,
         grid_tracker: Arc<Vec<Vec<((usize, usize), NodeIndex)>>>,
+        history: Arc<RwLock<HashMap<Vec<(usize, usize)>, usize>>>
     ) -> Self {
         Self {
             grid: grid,
             grid_tracker: grid_tracker,
+            history: history
         }
     }
-    fn calculate(&mut self, level: usize, thread_depth: usize, dist_level: usize) -> Option<usize> {
+    fn calculate(&mut self, level: usize, thread_depth: usize, dist_level: usize, stack: Vec<(usize, usize)>) -> Option<usize> {
         if self.grid.node_count() == 0 {
             return Some(0);
         } else if self.grid.node_count() == 1 {
@@ -146,9 +166,8 @@ impl BoardState {
 
         let mut graph_history: Vec<Graph<(), u8, Undirected>> = Vec::with_capacity(self.grid.node_count());
         let mut values: Vec<usize> = Vec::with_capacity(self.grid.node_count());
-        let mut diagram = HashMap::<(usize, usize), usize>::new();
 
-        let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = Vec::new();
+        let mut handles: Vec<(Vec<(usize, usize)>, std::thread::JoinHandle<Option<usize>>)> = Vec::new();
         /*
         let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = Vec::with_capacity(0);
         if level < thread_depth { // for performance
@@ -159,6 +178,20 @@ impl BoardState {
         for i in 0..self.grid_tracker.len() {
             'nodeloop: for ((x, y), mut node) in &self.grid_tracker[i] {
                 if self.grid.contains_node(node) {
+                    let mut curr_stack = stack.clone();
+                    curr_stack.push((*x, *y));
+                    curr_stack.sort();
+
+                    {
+                        let history_read = self.history.read().unwrap();
+                        let exists = history_read.get(&curr_stack);
+                        if exists.is_some() {
+                            // println!("repeat"); // for debugging
+                            values.push(*exists.unwrap());
+                            continue 'nodeloop
+                        }
+                    }
+
                     // can make more efficient
                     let new_grid = remove_node(self.grid.clone(), &mut node);
                     let grid_tracker = self.grid_tracker.clone();
@@ -168,10 +201,10 @@ impl BoardState {
                         let fs = File::create(name.clone()).unwrap();
                         serde_cbor::to_writer(
                             fs,
-                            &BoardStateRaw::from(BoardState::new(new_grid, grid_tracker)),
+                            &BoardStateRaw::from(BoardState::new(new_grid, grid_tracker, Arc::clone(&self.history))),
                         )
                         .expect(format!("Failed to serialize {}!", name).as_str());
-                        continue;
+                        continue 'nodeloop
                     }
 
                     let grid_graph = Graph::from(new_grid.clone());
@@ -194,26 +227,29 @@ impl BoardState {
                     graph_history.push(grid_graph);
 
                     if level < thread_depth {
+                        let history = Arc::clone(&self.history);
                         handles.push((
-                            *x,
-                            *y,
+                            curr_stack.clone(),
                             std::thread::spawn(move || {
-                                let value = BoardState::new(new_grid, grid_tracker).calculate(
+                                let value = BoardState::new(new_grid, grid_tracker, history).calculate(
                                     level + 1,
                                     thread_depth,
                                     dist_level,
+                                    curr_stack
                                 );
                                 value
                             }),
                         ));
                     } else {
-                        let value = BoardState::new(new_grid, grid_tracker).calculate(
+                        let value = BoardState::new(new_grid, grid_tracker, Arc::clone(&self.history)).calculate(
                             level + 1,
                             thread_depth,
                             dist_level,
+                            curr_stack.clone() // todo remove
                         );
                         if value.is_some() {
                             values.push(value.unwrap());
+                            self.history.write().unwrap().insert(curr_stack, value.unwrap());
                         } else {
                             return None;
                         }
@@ -227,25 +263,19 @@ impl BoardState {
         }
 
         if level < thread_depth {
-            for (x, y, handle) in handles {
+            for (stack, handle) in handles {
                 let value = handle.join().unwrap();
 
                 if value.is_some() {
                     let nimber = value.unwrap();
 
-                    if level == 0 {
-                        diagram.insert((x, y), nimber);
-                    }
+                    self.history.write().unwrap().insert(stack, nimber);
 
                     values.push(nimber);
                 } else {
                     return None;
                 }
             }
-        }
-
-        if level == 0 {
-            println!("{:?}", diagram);
         }
 
         return Some(mex(values));
@@ -404,8 +434,8 @@ mod tests {
     fn test_end() {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
             let (grid, grid_tracker) = instantiate_grid(*size);
-            let mut state = BoardState::new(grid.clone(), grid_tracker);
-            assert!(state.calculate(0, 0, 0) == Some(*sol));
+            let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
+            assert!(state.calculate(0, 0, 0, vec![]) == Some(*sol));
         }
     }
 
@@ -413,26 +443,26 @@ mod tests {
     fn test_end_multi() {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
             let (grid, grid_tracker) = instantiate_grid(*size);
-            let mut state = BoardState::new(grid.clone(), grid_tracker);
-            assert!(state.calculate(0, 3, 0) == Some(*sol));
+            let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
+            assert!(state.calculate(0, 3, 0, vec![]) == Some(*sol));
         }
     }
 
     #[bench]
     fn bench_5(b: &mut Bencher) {
         let (grid, grid_tracker) = instantiate_grid(5);
-        let mut state = BoardState::new(grid.clone(), grid_tracker);
+        let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
         b.iter(|| {
-            state.calculate(0, 0, 0);
+            state.calculate(0, 0, 0, vec![]);
         });
     }
 
     #[bench]
     fn bench_6(b: &mut Bencher) {
         let (grid, grid_tracker) = instantiate_grid(6);
-        let mut state = BoardState::new(grid.clone(), grid_tracker);
+        let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
         b.iter(|| {
-            state.calculate(0, 0, 0);
+            state.calculate(0, 0, 0, vec![]);
         });
     }
 
