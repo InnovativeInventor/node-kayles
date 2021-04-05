@@ -16,7 +16,7 @@ use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use hashbrown::HashMap;
-use std::sync::{Arc, Mutex, Condvar};
+use std::sync::Arc;
 use structopt::StructOpt;
 use std::sync::RwLock;
 
@@ -41,9 +41,6 @@ struct Opt {
     // File to read from
     #[structopt(short = "r", long = "read")]
     read: Option<String>,
-
-    #[structopt(short = "e", long = "estimated-cache-size", default_value = "10000000")]
-    cache_size: usize,
 }
 
 // The graph is represented by edges with a byte:
@@ -85,7 +82,7 @@ fn instantiate_grid(
 fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.size);
-    let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::with_capacity(opt.cache_size));
+    let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::with_capacity(1000000));
     // let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new());
 
     let mut state = match opt.read {
@@ -169,7 +166,6 @@ impl BoardState {
 
         let mut graph_history: Vec<Graph<(), u8, Undirected>> = Vec::with_capacity(self.grid.node_count());
         let mut values: Vec<usize> = Vec::with_capacity(self.grid.node_count());
-        let pending_pair = Arc::new((Mutex::new(true), Condvar::new())); // TODO: do I really have to init on each run?
 
         let mut handles: Vec<(Vec<(usize, usize)>, std::thread::JoinHandle<Option<usize>>)> = Vec::new();
         /*
@@ -232,12 +228,9 @@ impl BoardState {
 
                     if level == thread_depth {
                         let history = Arc::clone(&self.history);
-                        let pair = Arc::clone(&pending_pair);
                         handles.push((
                             curr_stack.clone(),
                             std::thread::spawn(move || {
-                                let (lock, cvar) = &*pair;
-                                let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
                                 let value = BoardState::new(new_grid, grid_tracker, history).calculate(
                                     level + 1,
                                     thread_depth,
@@ -273,24 +266,15 @@ impl BoardState {
         }
 
         if level == thread_depth {
-
-            std::thread::spawn(move|| {
-                let (lock, cvar) = &*pending_pair;
-                let mut pending = lock.lock().unwrap();
-                *pending = false;
-                cvar.notify_one();
-            });
-
             for (stack, handle) in handles {
                 let value = handle.join().unwrap();
 
                 if value.is_some() {
                     let nimber = value.unwrap();
 
+                    self.history.write().unwrap().insert(stack, nimber);
+
                     values.push(nimber);
-                    {
-                        self.history.write().unwrap().insert(stack, nimber);
-                    }
                 } else {
                     return None;
                 }
