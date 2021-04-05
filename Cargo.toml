@@ -11,12 +11,12 @@ edition = "2018"
 petgraph = { version = "0.5.1", features = ["serde-1"]}
 ndarray = "0.15.1"
 structopt = "0.3.21"
-hashbrown = "0.11.2"
 itertools = "0.10.0"
 # jemallocator = "0.3.2"
 mimalloc = { version = "*", default-features = false }
 serde_cbor = "0.11.1"
 serde = { version = "1.0.125", features = ["derive"] }
+quote = "1.0"
 
 [profile.release]
 # debug = true

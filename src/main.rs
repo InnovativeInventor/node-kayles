@@ -1,5 +1,6 @@
 #![feature(test)]
 #![feature(type_ascription)]
+#![feature(const_fn)]
 
 /*
 #[global_allocator]
@@ -14,8 +15,10 @@ use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::fs::File;
-use hashbrown::HashMap;
 use structopt::StructOpt;
 
 extern crate test;
@@ -80,7 +83,7 @@ fn instantiate_grid(
 fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.size);
-    let mut history: HashMap<Vec<(usize, usize)>, usize> = HashMap::<Vec<(usize, usize)>, usize>::with_capacity(50000000);
+    let mut history: HashMap<u64, usize> = HashMap::<u64, usize>::with_capacity(50000000);
     // let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new());
 
     let mut state = match opt.read {
@@ -90,15 +93,13 @@ fn main() {
         None => BoardState::new(grid.clone())
     };
 
-    let value = state.calculate(0, opt.dist_level, &vec![], & mut history, &grid_tracker);
+    let value = state.calculate(0, opt.dist_level, 0, & mut history, &grid_tracker);
     if value.is_some() {
         print!("Table: {{");
         for i in 0..opt.size {
             for j in 0..opt.size {
-                if history.contains_key(&vec![(i,j)]) {
-                    print!("{:?}: {},", (i, j), history.get(&vec![(i,j)]).unwrap());
-                } else if history.contains_key(&vec![(j,i)]) {
-                    print!("{:?}: {},", (j, i), history.get(&vec![(j,i)]).unwrap());
+                if history.contains_key(&calculate_hash(&(i,j))) {
+                    print!("{:?}: {},", (i, j), history.get(&calculate_hash(&(i,j))).unwrap());
                 }
             }
         }
@@ -146,7 +147,7 @@ impl BoardState {
             grid: grid,
         }
     }
-    fn calculate(&mut self, level: usize, dist_level: usize, stack: &Vec<(usize, usize)>, history: &mut HashMap<Vec<(usize, usize)>, usize>, grid_tracker: &Vec<Vec<((usize, usize), NodeIndex)>>) -> Option<usize> {
+    fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut HashMap<u64, usize>, grid_tracker: &Vec<Vec<((usize, usize), NodeIndex)>>) -> Option<usize> {
         if self.grid.node_count() == 0 {
             return Some(0);
         } else if self.grid.node_count() == 1 {
@@ -168,8 +169,7 @@ impl BoardState {
             'nodeloop: for ((x, y), mut node) in &grid_tracker[i] {
                 if self.grid.contains_node(node) {
                     let mut curr_stack = stack.clone();
-                    curr_stack.push((*x, *y));
-                    curr_stack.sort();
+                    curr_stack ^= calculate_hash(&(*x, *y));
 
                     let exists = history.get(&curr_stack);
                     if exists.is_some() {
@@ -214,7 +214,7 @@ impl BoardState {
                     let value = BoardState::new(new_grid).calculate(
                         level + 1,
                         dist_level,
-                        &curr_stack,
+                        curr_stack,
                         history,
                         grid_tracker
                     );
@@ -355,6 +355,13 @@ fn mex(values: Vec<usize>) -> usize {
     }
 
     return min;
+}
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    // From Rust docs: https://doc.rust-lang.org/std/hash/index.html
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
 }
 
 #[cfg(test)]
