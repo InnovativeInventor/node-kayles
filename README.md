@@ -21,4 +21,8 @@ It is recommended that you increase the stack size before running on large grids
 ```
 ulimit -s 65532
 ```
+For larger, you could do:
+```
+ulimit -s 4294967295
+```
 
