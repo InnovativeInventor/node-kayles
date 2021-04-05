@@ -236,7 +236,7 @@ impl BoardState {
                             let thread_grid_tracker = grid_tracker.clone();
                             let thread_new_grid = new_grid.clone();
 
-                            match thread::Builder::new().stack_size(32 * 1024).spawn(move || {
+                            match thread::Builder::new().stack_size(128 * 1024).spawn(move || {
                                 let value = BoardState::new(thread_new_grid, thread_grid_tracker, history).calculate(
                                     level + 1,
                                     thread_depth,
