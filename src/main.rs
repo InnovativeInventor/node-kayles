@@ -31,7 +31,7 @@ struct Opt {
     #[structopt(short = "s", long = "size", default_value = "8")]
     size: usize,
 
-    #[structopt(short = "t", long = "thread-level", default_value = "1")]
+    #[structopt(short = "t", long = "thread-level", default_value = "0")]
     thread_depth: usize,
 
     // Note: this will generate a lot of files
@@ -226,7 +226,7 @@ impl BoardState {
                     }
                     graph_history.push(grid_graph);
 
-                    if level < thread_depth {
+                    if level == thread_depth {
                         let history = Arc::clone(&self.history);
                         handles.push((
                             curr_stack.clone(),
@@ -262,7 +262,7 @@ impl BoardState {
             return None;
         }
 
-        if level < thread_depth {
+        if level == thread_depth {
             for (stack, handle) in handles {
                 let value = handle.join().unwrap();
 
