@@ -19,6 +19,7 @@ use hashbrown::HashMap;
 use std::sync::Arc;
 use structopt::StructOpt;
 use std::sync::RwLock;
+use std::thread;
 
 extern crate test;
 
@@ -227,19 +228,29 @@ impl BoardState {
                     graph_history.push(grid_graph);
 
                     if level < thread_depth {
-                        let history = Arc::clone(&self.history);
-                        handles.push((
-                            curr_stack.clone(),
-                            std::thread::spawn(move || {
-                                let value = BoardState::new(new_grid, grid_tracker, history).calculate(
+                        let mut spawned = false;
+                        while ! spawned { // todo: optimize
+                            let builder = thread::Builder::new().stack_size(32 * 1024);
+                            let history = Arc::clone(&self.history);
+                            let thread_stack = curr_stack.clone();
+                            let thread_grid_tracker = grid_tracker.clone();
+                            let thread_new_grid = new_grid.clone();
+                            match builder.spawn(move || {
+                                let value = BoardState::new(thread_new_grid, thread_grid_tracker, history).calculate(
                                     level + 1,
                                     thread_depth,
                                     dist_level,
-                                    curr_stack
+                                    thread_stack
                                 );
                                 value
-                            }),
-                        ));
+                            }) {
+                                Ok(thread) => {
+                                    spawned = true;
+                                    handles.push((curr_stack.clone(), thread));
+                                },
+                                Err(_e) => spawned = false
+                            }
+                        }
                     } else {
                         let value = BoardState::new(new_grid, grid_tracker, Arc::clone(&self.history)).calculate(
                             level + 1,
