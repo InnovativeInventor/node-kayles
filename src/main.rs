@@ -248,8 +248,11 @@ impl BoardState {
                             curr_stack.clone() // todo remove
                         );
                         if value.is_some() {
-                            values.push(value.unwrap());
-                            self.history.write().unwrap().insert(curr_stack, value.unwrap());
+                            let unwrapped_value = value.unwrap();
+                            values.push(unwrapped_value);
+                            {
+                                self.history.write().unwrap().insert(curr_stack, unwrapped_value);
+                            }
                         } else {
                             return None;
                         }
