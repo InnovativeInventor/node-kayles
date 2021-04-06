@@ -74,7 +74,7 @@ fn instantiate_grid(
                 grid.update_edge(grid_tracker[i - 1][j - 1].1, row[j].1, 2);
             }
 
-            if i > 0 && j < n - 1 {
+            if i > 0 && j < m - 1 {
                 grid.update_edge(grid_tracker[i - 1][j + 1].1, row[j].1, 3);
             }
         }
@@ -87,8 +87,7 @@ fn instantiate_grid(
 fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.m, opt.n);
-    let mut history: FnvHashMap<u64, usize> = FnvHashMap::<u64, usize>::default();
-    history.reserve(50000000);
+    let mut history: RawTable<usize> = RawTable::with_capacity(50000000);
     // let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new());
 
     let mut state = match opt.read {
@@ -103,8 +102,8 @@ fn main() {
         print!("Table: {{");
         for i in 0..opt.n {
             for j in 0..opt.m {
-                if history.contains_key(&hash(&(i,j))) {
-                    print!("{:?}: {},", (i, j), history.get(&hash(&(i,j))).unwrap());
+                if history.get(hash(&(i,j)), |_| true).is_some() {
+                    print!("{:?}: {},", (i, j), history.get(hash(&(i,j)), |_| true).unwrap());
                 }
             }
         }
@@ -152,7 +151,7 @@ impl BoardState {
             grid: grid,
         }
     }
-    fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut FnvHashMap<u64, usize>, grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>) -> Option<usize> {
+    fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut RawTable<usize>, grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>) -> Option<usize> {
         if self.grid.node_count() == 0 {
             return Some(0);
         } else if self.grid.node_count() == 1 {
@@ -171,16 +170,17 @@ impl BoardState {
         */
 
         for i in 0..grid_tracker.len() {
-            'nodeloop: for ((x, y, hash), mut node) in &grid_tracker[i] {
+            'nodeloop: for ((x, y, hash_value), mut node) in &grid_tracker[i] {
                 if self.grid.contains_node(node) {
                     let mut curr_stack = stack.clone();
-                    curr_stack ^= hash;
+                    curr_stack ^= hash_value;
 
-                    let exists = history.get(&curr_stack);
-                    if exists.is_some() {
-                        // println!("repeat"); // for debugging
-                        values.push(*exists.unwrap());
-                        continue 'nodeloop
+                    match history.get(curr_stack, |_| true) {
+                        Some(value) =>  {
+                            values.push(*value);
+                            continue 'nodeloop
+                        },
+                        None => {}
                     }
 
                     // can make more efficient
@@ -227,7 +227,7 @@ impl BoardState {
                         let unwrapped_value = value.unwrap();
                         values.push(unwrapped_value);
                         {
-                            history.insert(curr_stack, unwrapped_value);
+                            history.insert(curr_stack, unwrapped_value, hash);
                         }
                     } else {
                         return None;
