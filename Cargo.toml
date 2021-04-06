@@ -12,7 +12,6 @@ petgraph = { version = "0.5.1", features = ["serde-1"]}
 ndarray = "0.15.1"
 structopt = "0.3.21"
 itertools = "0.10.0"
-hashbrown = { version = "0.11.2", features = ["raw", "ahash", "inline-more"]}
 mimalloc = { version = "*", default-features = false }
 fnv = "*"
 serde_cbor = "0.11.1"

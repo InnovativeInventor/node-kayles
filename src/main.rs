@@ -16,10 +16,10 @@ use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
 use fnv::{FnvHasher, FnvHashMap};
-use hashbrown::raw::RawTable;
 use std::fs::File;
+use std::collections::HashMap;
 use structopt::StructOpt;
-use std::hash::{Hash, Hasher};
+use std::hash::{Hash, Hasher, BuildHasher};
 
 extern crate test;
 
@@ -87,8 +87,8 @@ fn instantiate_grid(
 fn main() {
     let opt = Opt::from_args();
     let (grid, grid_tracker) = instantiate_grid(opt.m, opt.n);
-    let mut history: RawTable<usize> = RawTable::with_capacity(50000000);
-    // let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new());
+    let mut history: HashMap<u64, usize, U64Hasher> = HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
+    // let history: RwLock<HashMap<Vec<u64>, usize>> = RwLock::new(HashMap::<Vec<u64>, usize>::new());
 
     let mut state = match opt.read {
         Some(name) => BoardState::from(
@@ -102,8 +102,8 @@ fn main() {
         print!("Table: {{");
         for i in 0..opt.n {
             for j in 0..opt.m {
-                if history.get(hash(&(i,j)), |_| true).is_some() {
-                    print!("{:?}: {},", (i, j), history.get(hash(&(i,j)), |_| true).unwrap());
+                if history.get(&hash(&(i,j))).is_some() {
+                    print!("{:?}: {},", (i, j), history.get(&hash(&(i,j))).unwrap());
                 }
             }
         }
@@ -115,6 +115,38 @@ fn main() {
     }
 
     std::process::exit(0); // faster exit
+}
+
+pub struct U64Hasher(u64);
+
+impl U64Hasher {
+    fn new() -> Self {
+        Self {
+            0: 0
+        }
+    }
+}
+
+impl Hasher for U64Hasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes.iter() {
+            self.0 = self.0.wrapping_shl(8) + (*byte as u64); // maybe speedup?
+        }
+    }
+}
+
+impl BuildHasher for U64Hasher {
+    type Hasher = U64Hasher;
+    #[inline]
+    fn build_hasher(&self) -> U64Hasher {
+        U64Hasher::new()
+    }
 }
 
 struct BoardState {
@@ -145,13 +177,13 @@ impl From<BoardState> for BoardStateRaw {
 impl BoardState {
     fn new(
         grid: StableGraph<(), u8, Undirected>,
-   //     history: &'static mut HashMap<Vec<(usize, usize)>, usize>
+   //     history: &'static mut HashMap<Vec<u64>, usize>
     ) -> Self {
         Self {
             grid: grid,
         }
     }
-    fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut RawTable<usize>, grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>) -> Option<usize> {
+    fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut HashMap<u64, usize, U64Hasher>, grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>) -> Option<usize> {
         if self.grid.node_count() == 0 {
             return Some(0);
         } else if self.grid.node_count() == 1 {
@@ -161,21 +193,13 @@ impl BoardState {
         let mut graph_history: Vec<Graph<(), u8, Undirected>> = Vec::with_capacity(self.grid.node_count());
         let mut values: Vec<usize> = Vec::with_capacity(self.grid.node_count());
 
-        // let mut handles: Vec<(Vec<(usize, usize)>, std::thread::JoinHandle<Option<usize>>)> = Vec::new();
-        /*
-        let mut handles: Vec<(usize, usize, std::thread::JoinHandle<Option<usize>>)> = Vec::with_capacity(0);
-        if level < thread_depth { // for performance
-            handles.reserve_exact(self.grid.node_count());
-        }
-        */
-
         for i in 0..grid_tracker.len() {
             'nodeloop: for ((x, y, hash_value), mut node) in &grid_tracker[i] {
                 if self.grid.contains_node(node) {
                     let mut curr_stack = stack.clone();
                     curr_stack ^= hash_value;
 
-                    match history.get(curr_stack, |_| true) {
+                    match history.get(&curr_stack) {
                         Some(value) =>  {
                             values.push(*value);
                             continue 'nodeloop
@@ -227,7 +251,7 @@ impl BoardState {
                         let unwrapped_value = value.unwrap();
                         values.push(unwrapped_value);
                         {
-                            history.insert(curr_stack, unwrapped_value, hash);
+                            history.insert(curr_stack, unwrapped_value);
                         }
                     } else {
                         return None;
@@ -239,24 +263,6 @@ impl BoardState {
         if dist_level == level + 1 {
             return None;
         }
-
-        /*
-        if level < thread_depth {
-            for (stack, handle) in handles {
-                let value = handle.join().unwrap();
-
-                if value.is_some() {
-                    let nimber = value.unwrap();
-
-                    history.insert(stack, nimber);
-
-                    values.push(nimber);
-                } else {
-                    return None;
-                }
-            }
-        }
-        */
 
         return Some(mex(values));
     }
@@ -376,14 +382,14 @@ mod tests {
 
     #[test]
     fn test_grid_2() {
-        let (grid, _grid_tracker) = instantiate_grid(2);
+        let (grid, _grid_tracker) = instantiate_grid(2, 2);
         assert!(grid.node_count() == 4);
         assert!(grid.edge_count() == 6);
     }
 
     #[test]
     fn test_grid_3() {
-        let (grid, _grid_tracker) = instantiate_grid(3);
+        let (grid, _grid_tracker) = instantiate_grid(3, 3);
         assert!(grid.node_count() == 9);
         assert!(grid.edge_count() == 20);
     }
@@ -398,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_remove_node_2() {
-        let (grid, grid_tracker) = instantiate_grid(2);
+        let (grid, grid_tracker) = instantiate_grid(2, 2);
         let new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
         assert!(new_grid.node_count() == 0);
         assert!(new_grid.edge_count() == 0);
@@ -406,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_remove_node_3() {
-        let (grid, grid_tracker) = instantiate_grid(3);
+        let (grid, grid_tracker) = instantiate_grid(3, 3);
 
         let new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
 
@@ -419,36 +425,40 @@ mod tests {
     #[test]
     fn test_end() {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
-            let (grid, grid_tracker) = instantiate_grid(*size);
-            let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
-            assert!(state.calculate(0, 0, 0, vec![]) == Some(*sol));
+            let mut history: HashMap<u64, usize, U64Hasher> = HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
+            let (grid, grid_tracker) = instantiate_grid(*size, *size);
+            let mut state = BoardState::new(grid.clone());
+            assert!(state.calculate(0, 0, 0, &mut history, &grid_tracker) == Some(*sol));
         }
     }
 
     #[test]
     fn test_end_multi() {
         for (size, sol) in &[(0, 0), (1, 1), (2, 1), (3, 2), (4, 1), (5, 3), (6, 1)] {
-            let (grid, grid_tracker) = instantiate_grid(*size);
-            let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
-            assert!(state.calculate(0, 3, 0, vec![]) == Some(*sol));
+            let mut history: HashMap<u64, usize, U64Hasher> = HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
+            let (grid, grid_tracker) = instantiate_grid(*size, *size);
+            let mut state = BoardState::new(grid.clone());
+            assert!(state.calculate(0, 0, 0, &mut history, &grid_tracker) == Some(*sol));
         }
     }
 
     #[bench]
     fn bench_5(b: &mut Bencher) {
-        let (grid, grid_tracker) = instantiate_grid(5);
-        let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
+        let mut history: HashMap<u64, usize, U64Hasher> = HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
+        let (grid, grid_tracker) = instantiate_grid(5, 5);
+        let mut state = BoardState::new(grid.clone());
         b.iter(|| {
-            state.calculate(0, 0, 0, vec![]);
+            state.calculate(0, 0, 0, &mut history, &grid_tracker)
         });
     }
 
     #[bench]
     fn bench_6(b: &mut Bencher) {
-        let (grid, grid_tracker) = instantiate_grid(6);
-        let mut state = BoardState::new(grid.clone(), grid_tracker, Arc::new(RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new())));
+        let (grid, grid_tracker) = instantiate_grid(6, 6);
+        let mut state = BoardState::new(grid.clone());
+        let mut history: HashMap<u64, usize, U64Hasher> = HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
         b.iter(|| {
-            state.calculate(0, 0, 0, vec![]);
+            state.calculate(0, 0, 0, &mut history, &grid_tracker)
         });
     }
 
