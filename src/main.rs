@@ -135,9 +135,9 @@ impl Hasher for U64Hasher {
 
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
-        for byte in bytes.iter() {
-            self.0 = self.0.wrapping_shl(8) + (*byte as u64); // maybe speedup?
-        }
+        self.0 = unsafe {
+            std::mem::transmute([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
+        };
     }
 }
 
@@ -468,6 +468,21 @@ mod tests {
         b.iter(|| {
             mex(test_vec.clone());
         });
+    }
+
+    fn u64hash(t: &u64) -> u64 {
+        let mut s: U64Hasher  = U64Hasher::new();
+        t.hash(&mut s);
+        s.finish()
+    }
+
+    #[test]
+    fn test_u64hash() {
+        println!("{}", u64hash(&1));
+        assert!(u64hash(&1)==u64hash(&1));
+        assert!(u64hash(&1)==1);
+        assert!(u64hash(&100)==u64hash(&100));
+        assert!(u64hash(&100)==100);
     }
 }
 
