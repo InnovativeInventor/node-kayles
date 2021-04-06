@@ -15,11 +15,11 @@ use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use fnv::{FnvHasher, FnvHashMap};
+use hashbrown::raw::RawTable;
 use std::fs::File;
 use structopt::StructOpt;
+use std::hash::{Hash, Hasher};
 
 extern crate test;
 
@@ -29,8 +29,11 @@ extern crate test;
     about = "Queens shouldn't kill each other!"
 )]
 struct Opt {
-    #[structopt(short = "s", long = "size", default_value = "9")]
-    size: usize,
+    #[structopt(short = "n", long = "n", default_value = "9")]
+    n: usize,
+
+    #[structopt(short = "m", long = "m", default_value = "9")]
+    m: usize,
 
     #[structopt(short = "t", long = "thread-level", default_value = "0")]
     thread_depth: usize,
@@ -48,16 +51,17 @@ struct Opt {
 // 0: - , 1: |, 2: \, 3: /
 fn instantiate_grid(
     n: usize,
+    m: usize,
 ) -> (
     StableGraph<(), u8, Undirected>,
-    Vec<Vec<((usize, usize), NodeIndex)>>,
+    Vec<Vec<((usize, usize, u64), NodeIndex)>>,
 ) {
     let mut grid = StableGraph::<(), u8, Undirected>::with_capacity(n*n, n*(n+1));
-    let mut grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>> = Vec::with_capacity(n*n);
+    let mut grid_tracker: Vec<Vec<((usize, usize, u64), NodeIndex)>> = Vec::with_capacity(n*n);
     for i in 0..n {
         let mut row = vec![];
-        for j in 0..n {
-            row.push(((i, j), grid.add_node(())));
+        for j in 0..m {
+            row.push(((i, j, hash(&(i, j))), grid.add_node(())));
             if j > 0 {
                 grid.update_edge(row[j - 1].1, row[j].1, 0);
             }
@@ -82,8 +86,9 @@ fn instantiate_grid(
 
 fn main() {
     let opt = Opt::from_args();
-    let (grid, grid_tracker) = instantiate_grid(opt.size);
-    let mut history: HashMap<u64, usize> = HashMap::<u64, usize>::with_capacity(50000000);
+    let (grid, grid_tracker) = instantiate_grid(opt.m, opt.n);
+    let mut history: FnvHashMap<u64, usize> = FnvHashMap::<u64, usize>::default();
+    history.reserve(50000000);
     // let history: RwLock<HashMap<Vec<(usize, usize)>, usize>> = RwLock::new(HashMap::<Vec<(usize, usize)>, usize>::new());
 
     let mut state = match opt.read {
@@ -96,10 +101,10 @@ fn main() {
     let value = state.calculate(0, opt.dist_level, 0, & mut history, &grid_tracker);
     if value.is_some() {
         print!("Table: {{");
-        for i in 0..opt.size {
-            for j in 0..opt.size {
-                if history.contains_key(&calculate_hash(&(i,j))) {
-                    print!("{:?}: {},", (i, j), history.get(&calculate_hash(&(i,j))).unwrap());
+        for i in 0..opt.n {
+            for j in 0..opt.m {
+                if history.contains_key(&hash(&(i,j))) {
+                    print!("{:?}: {},", (i, j), history.get(&hash(&(i,j))).unwrap());
                 }
             }
         }
@@ -147,7 +152,7 @@ impl BoardState {
             grid: grid,
         }
     }
-    fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut HashMap<u64, usize>, grid_tracker: &Vec<Vec<((usize, usize), NodeIndex)>>) -> Option<usize> {
+    fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut FnvHashMap<u64, usize>, grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>) -> Option<usize> {
         if self.grid.node_count() == 0 {
             return Some(0);
         } else if self.grid.node_count() == 1 {
@@ -166,10 +171,10 @@ impl BoardState {
         */
 
         for i in 0..grid_tracker.len() {
-            'nodeloop: for ((x, y), mut node) in &grid_tracker[i] {
+            'nodeloop: for ((x, y, hash), mut node) in &grid_tracker[i] {
                 if self.grid.contains_node(node) {
                     let mut curr_stack = stack.clone();
-                    curr_stack ^= calculate_hash(&(*x, *y));
+                    curr_stack ^= hash;
 
                     let exists = history.get(&curr_stack);
                     if exists.is_some() {
@@ -293,7 +298,7 @@ fn remove_node(
         }
     }
 
-    let mut edge_map: HashMap<u8, Vec<NodeIndex>> = HashMap::new();
+    let mut edge_map: FnvHashMap<u8, Vec<NodeIndex>> = FnvHashMap::default();
     for curr_node_index in 0..followed_nodes.len() {
         edge_map.clear();
         // stitch
@@ -334,6 +339,12 @@ fn remove_node(
     grid
 }
 
+fn hash<T: Hash>(t: &T) -> u64 {
+    let mut s: FnvHasher = Default::default();
+    t.hash(&mut s);
+    s.finish()
+}
+
 // fn mex(values: Vec<usize>) -> usize {
 fn mex(values: Vec<usize>) -> usize {
     let mut min = 0;
@@ -355,13 +366,6 @@ fn mex(values: Vec<usize>) -> usize {
     }
 
     return min;
-}
-
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
-    // From Rust docs: https://doc.rust-lang.org/std/hash/index.html
-    let mut s = DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
 }
 
 #[cfg(test)]
