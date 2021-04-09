@@ -9,7 +9,7 @@ rm -rf /tmp/pgo-data/*
 # Generate profiles
 RUSTFLAGS="-C target-cpu=native -Cprofile-generate=/tmp/pgo-data --target=$target" cargo build --release
 echo "Running sample invocations for profiling and compiling optimization . . ."
-for n in {1..3}; do ./target/release/non-attacking-queens --size 8 && sleep 0.5; done
+for n in {1..3}; do ./target/release/non-attacking-queens -n 9 -n 9 && sleep 0.5; done
 
 llvm_profdata_loc=$(fd --full-path ~/.rustup/toolchains ~/.rustup/toolchains/*nightly*/lib/rustlib/*/bin/ | rg "llvm-profdata")
 $llvm_profdata_loc merge -o /tmp/pgo-data/merged.profdata /tmp/pgo-data
