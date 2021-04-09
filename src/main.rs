@@ -10,16 +10,17 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use petgraph::algo::is_isomorphic_matching;
+use petgraph::algo::is_isomorphic;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
-use fnv::{FnvHasher, FnvHashMap};
+use fnv::{FnvHasher};
 use std::fs::File;
 use std::collections::HashMap;
 use structopt::StructOpt;
 use std::hash::{Hash, Hasher, BuildHasher};
+use std::cmp;
 
 extern crate test;
 
@@ -58,24 +59,26 @@ fn instantiate_grid(
 ) {
     let mut grid = StableGraph::<(), u8, Undirected>::with_capacity(n*n, n*(n+1));
     let mut grid_tracker: Vec<Vec<((usize, usize, u64), NodeIndex)>> = Vec::with_capacity(n*n);
-    for i in 0..n {
+    for i in 0..n as i64 {
         let mut row = vec![];
-        for j in 0..m {
-            row.push(((i, j, hash(&(i, j))), grid.add_node(())));
-            if j > 0 {
-                grid.update_edge(row[j - 1].1, row[j].1, 0);
-            }
+        for j in 0..m as i64 {
+            row.push(((i as usize, j as usize, hash(&(i as usize, j as usize))), grid.add_node(())));
+            for k in 1..(cmp::max(i,j)+1) {
+                if j - k >= 0 {
+                    grid.update_edge(row[(j - k) as usize].1, row[j as usize].1, 0);
+                }
 
-            if i > 0 {
-                grid.update_edge(grid_tracker[i - 1][j].1, row[j].1, 1);
-            }
+                if i - k >= 0 {
+                    grid.update_edge(grid_tracker[(i - k) as usize][j as usize].1, row[j as usize].1, 1);
+                }
 
-            if i > 0 && j > 0 {
-                grid.update_edge(grid_tracker[i - 1][j - 1].1, row[j].1, 2);
-            }
+                if i - k >= 0 && j - k >= 0 {
+                    grid.update_edge(grid_tracker[(i - k) as usize][(j - k) as usize].1, row[j as usize].1, 2);
+                }
 
-            if i > 0 && j < m - 1 {
-                grid.update_edge(grid_tracker[i - 1][j + 1].1, row[j].1, 3);
+                if i - k >= 0 && j + k < m as i64 {
+                    grid.update_edge(grid_tracker[(i - k) as usize][(j + k) as usize].1, row[j as usize].1, 3);
+                }
             }
         }
         grid_tracker.push(row);
@@ -227,19 +230,13 @@ impl BoardState {
 
                     let grid_graph = Graph::from(new_grid.clone());
                     for graph in &graph_history {
-                        if graph.edge_count() == grid_graph.edge_count() {
-                            // todo: measure if actually faster
-                            for perms in &PERMUTATIONS_4 {
-                                if is_isomorphic_matching(
-                                    &grid_graph,
-                                    graph,
-                                    |_x, _y| true,
-                                    |x, y| &perms[*x as usize] == y,
-                                ) {
-                                    // todo: examine diff with/without matching
-                                    continue 'nodeloop;
-                                }
-                            }
+                        // todo: measure if actually faster
+                        if is_isomorphic(
+                            &grid_graph,
+                            graph
+                        ) {
+                            // todo: examine diff with/without matching
+                            continue 'nodeloop;
                         }
                     }
                     graph_history.push(grid_graph);
@@ -288,75 +285,12 @@ fn remove_node(
     mut grid: StableGraph<(), u8, Undirected>,
     node: &mut NodeIndex,
 ) -> StableGraph<(), u8, Undirected> {
-    let mut followed_nodes: Vec<(u8, NodeIndex)> = Vec::with_capacity(grid.node_count());
-    let mut directional_followed_nodes: Vec<(u8, NodeIndex)> = vec![];
-
-    for weight in 0..4 {
-        directional_followed_nodes.clear();
-        directional_followed_nodes.push((weight, *node));
-
-        let mut stop = false;
-        while !stop{
-            stop = true;
-            for j in 0..directional_followed_nodes.len() {
-                let mut walker = grid.neighbors(directional_followed_nodes[j].1).detach();
-                while let Some((other_edge, other_node)) = walker.next(&grid) {
-                    if grid.edge_weight(other_edge).unwrap() == &weight
-                        && !directional_followed_nodes.contains(&(weight, other_node))
-                    {
-                        // can make more efficient
-                        directional_followed_nodes.push((weight, other_node));
-                        stop = false;
-                    }
-                }
-            }
-        }
-
-        // add back in, note: can make more efficient
-        for index in &directional_followed_nodes {
-            if !followed_nodes.contains(index) {
-                followed_nodes.push(*index);
-            }
-        }
-    }
-
-    let mut edge_map: FnvHashMap<u8, Vec<NodeIndex>> = FnvHashMap::default();
-    for (curr_weight, curr_node) in &followed_nodes {
-        edge_map.clear();
-        // stitch
-
-        let mut curr_walker = grid.neighbors(*curr_node).detach();
-        while let Some((edge, other_node)) = curr_walker.next(&grid) {
-            /*
-            if followed_nodes.contains(&other_node) {
-                continue // skip
-            }
-            */
-
-            let weight = *grid.edge_weight(edge).unwrap();
-
-            if weight == *curr_weight {
-                continue;
-            }
-
-            if edge_map.contains_key(&weight) {
-                let same_weight_neighbors = edge_map.get_mut(&weight).unwrap();
-                for neighbor in &*same_weight_neighbors {
-                    grid.add_edge(other_node, *neighbor, weight);
-                }
-                same_weight_neighbors.push(other_node);
-            } else {
-                edge_map.insert(weight, vec![other_node]);
-            }
-        }
-    }
-
-    for each_node in followed_nodes {
+    let mut walker = grid.neighbors(*node).detach();
+    while let Some((_edge, neighbor)) = walker.next(&grid) {
         // contract
-        grid.remove_node(each_node.1);
+        grid.remove_node(neighbor);
     }
-    // grid.remove_node(*node);
-
+    grid.remove_node(*node);
     grid
 }
 
@@ -400,6 +334,7 @@ mod tests {
     fn test_grid_2() {
         let (grid, _grid_tracker) = instantiate_grid(2, 2);
         assert!(grid.node_count() == 4);
+        println!("{}", grid.edge_count());
         assert!(grid.edge_count() == 6);
     }
 
@@ -407,8 +342,19 @@ mod tests {
     fn test_grid_3() {
         let (grid, _grid_tracker) = instantiate_grid(3, 3);
         assert!(grid.node_count() == 9);
-        assert!(grid.edge_count() == 20);
+        assert!(grid.edge_count() == 28);
     }
+
+    #[test]
+    fn test_grid_many() {
+        for i in 3..10 {
+            for j in 3..10 {
+            let (grid, _grid_tracker) = instantiate_grid(i, j);
+            assert!(grid.node_count() > 0 && grid.edge_count() > 0);
+            }
+        }
+    }
+
 
     #[test]
     fn test_mex() {
@@ -512,32 +458,3 @@ mod tests {
         assert!(u64hash(&100)==100);
     }
 }
-
-// Vec::from_iter((0..5).permutations(4))
-// This is only for performance :)
-const PERMUTATIONS_4: [[u8; 4]; 24] = [
-    [0, 1, 2, 3],
-    [0, 1, 3, 2],
-    [0, 2, 1, 3],
-    [0, 2, 3, 1],
-    [0, 3, 1, 2],
-    [0, 3, 2, 1],
-    [1, 0, 2, 3],
-    [1, 0, 3, 2],
-    [1, 2, 0, 3],
-    [1, 2, 3, 0],
-    [1, 3, 0, 2],
-    [1, 3, 2, 0],
-    [2, 0, 1, 3],
-    [2, 0, 3, 1],
-    [2, 1, 0, 3],
-    [2, 1, 3, 0],
-    [2, 3, 0, 1],
-    [2, 3, 1, 0],
-    [3, 0, 1, 2],
-    [3, 0, 2, 1],
-    [3, 1, 0, 2],
-    [3, 1, 2, 0],
-    [3, 2, 0, 1],
-    [3, 2, 1, 0],
-];
