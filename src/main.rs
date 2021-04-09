@@ -81,7 +81,7 @@ fn instantiate_grid(
         grid_tracker.push(row);
     }
 
-    return (grid, grid_tracker);
+    (grid, grid_tracker)
 }
 
 fn main() {
@@ -94,7 +94,7 @@ fn main() {
         Some(name) => BoardState::from(
             serde_cbor::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw,
         ),
-        None => BoardState::new(grid.clone())
+        None => BoardState::new(grid)
     };
 
     let value = state.calculate(0, opt.dist_level, 0, & mut history, &grid_tracker);
@@ -135,9 +135,13 @@ impl Hasher for U64Hasher {
 
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
+        self.0 = u64::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]]);
+
+        /*
         self.0 = unsafe {
             std::mem::transmute([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]])
         };
+        */
     }
 }
 
@@ -180,7 +184,7 @@ impl BoardState {
    //     history: &'static mut HashMap<Vec<u64>, usize>
     ) -> Self {
         Self {
-            grid: grid,
+            grid,
         }
     }
     fn calculate(&mut self, level: usize, dist_level: usize, stack: u64, history: &mut HashMap<u64, usize, U64Hasher>, grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>) -> Option<usize> {
@@ -196,7 +200,7 @@ impl BoardState {
         for i in 0..grid_tracker.len() {
             'nodeloop: for ((x, y, hash_value), mut node) in &grid_tracker[i] {
                 if self.grid.contains_node(node) {
-                    let mut curr_stack = stack.clone();
+                    let mut curr_stack = stack;
                     curr_stack ^= hash_value;
 
                     match history.get(&curr_stack) {
@@ -247,6 +251,17 @@ impl BoardState {
                         history,
                         grid_tracker
                     );
+                    match value {
+                        Some(unwrapped_value) => {
+                            values.push(unwrapped_value);
+                            {
+                                history.insert(curr_stack, unwrapped_value);
+                            }
+                        },
+                        None => return None
+                    }
+
+                    /*
                     if value.is_some() {
                         let unwrapped_value = value.unwrap();
                         values.push(unwrapped_value);
@@ -256,6 +271,7 @@ impl BoardState {
                     } else {
                         return None;
                     }
+                    */
                 }
             }
         }
@@ -264,7 +280,7 @@ impl BoardState {
             return None;
         }
 
-        return Some(mex(values));
+        Some(mex(values))
     }
 }
 
@@ -280,7 +296,7 @@ fn remove_node(
         directional_followed_nodes.push((weight, *node));
 
         let mut stop = false;
-        while stop == false {
+        while !stop{
             stop = true;
             for j in 0..directional_followed_nodes.len() {
                 let mut walker = grid.neighbors(directional_followed_nodes[j].1).detach();
@@ -305,12 +321,11 @@ fn remove_node(
     }
 
     let mut edge_map: FnvHashMap<u8, Vec<NodeIndex>> = FnvHashMap::default();
-    for curr_node_index in 0..followed_nodes.len() {
+    for (curr_weight, curr_node) in &followed_nodes {
         edge_map.clear();
         // stitch
-        let (curr_weight, curr_node) = followed_nodes[curr_node_index];
 
-        let mut curr_walker = grid.neighbors(curr_node).detach();
+        let mut curr_walker = grid.neighbors(*curr_node).detach();
         while let Some((edge, other_node)) = curr_walker.next(&grid) {
             /*
             if followed_nodes.contains(&other_node) {
@@ -318,16 +333,16 @@ fn remove_node(
             }
             */
 
-            let weight = grid.edge_weight(edge).unwrap().clone();
+            let weight = *grid.edge_weight(edge).unwrap();
 
-            if weight == curr_weight {
+            if weight == *curr_weight {
                 continue;
             }
 
             if edge_map.contains_key(&weight) {
                 let same_weight_neighbors = edge_map.get_mut(&weight).unwrap();
-                for k in 0..same_weight_neighbors.len() {
-                    grid.add_edge(other_node, same_weight_neighbors[k], weight);
+                for neighbor in &*same_weight_neighbors {
+                    grid.add_edge(other_node, *neighbor, weight);
                 }
                 same_weight_neighbors.push(other_node);
             } else {
@@ -371,7 +386,7 @@ fn mex(values: Vec<usize>) -> usize {
         min += 1;
     }
 
-    return min;
+    min
 }
 
 #[cfg(test)]
@@ -379,6 +394,7 @@ mod tests {
     use super::*;
     use crate::{instantiate_grid, mex, remove_node, BoardState};
     use test::Bencher;
+    use std::iter::FromIterator;
 
     #[test]
     fn test_grid_2() {
@@ -467,6 +483,17 @@ mod tests {
         let test_vec = vec![3, 3, 9, 2, 0, 9, 8, 4, 2, 7];
         b.iter(|| {
             mex(test_vec.clone());
+        });
+    }
+
+    #[bench]
+    fn bench_hash(b: &mut Bencher) {
+        let test_vec = Vec::from_iter(0..1000);
+        let mut total = 0;
+        b.iter(|| {
+            for int in &test_vec {
+                total ^= u64hash(int);
+            }
         });
     }
 
