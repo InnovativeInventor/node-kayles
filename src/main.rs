@@ -48,7 +48,7 @@ struct Opt {
     #[structopt(short = "r", long = "read")]
     read: Option<String>,
 
-    // File to read from
+    // Non-interactive, for use in scripts and CI/CD
     #[structopt(short = "s", long = "non-interactive")]
     noninteractive: bool,
 }

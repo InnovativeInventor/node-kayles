@@ -1,6 +1,6 @@
 [package]
 name = "non-attacking-queens"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["InnovativeInventor <root@max.fan>"]
 edition = "2018"
 
