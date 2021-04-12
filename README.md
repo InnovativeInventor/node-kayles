@@ -7,7 +7,7 @@ Some calculations for the [non attacking queens](https://www.maa.org/sites/defau
 To run and build:
 ```
 bash release.sh
-/target/release/non-attacking-queens --size $SIZE
+./target/release/non-attacking-queens --size $SIZE
 ```
 where `$SIZE` is the nxn grid to calculate.
 
