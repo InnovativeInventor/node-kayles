@@ -21,19 +21,20 @@ use std::collections::HashMap;
 use structopt::StructOpt;
 use std::hash::{Hash, Hasher, BuildHasher};
 use std::cmp;
+use std::io;
 
 extern crate test;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, StructOpt, Clone)]
 #[structopt(
     name = "non-attacking-queens",
     about = "Queens shouldn't kill each other!"
 )]
 struct Opt {
-    #[structopt(short = "n", long = "n", default_value = "9")]
+    #[structopt(short = "n", long = "n", default_value = "10")]
     n: usize,
 
-    #[structopt(short = "m", long = "m", default_value = "9")]
+    #[structopt(short = "m", long = "m", default_value = "10")]
     m: usize,
 
     #[structopt(short = "t", long = "thread-level", default_value = "0")]
@@ -89,18 +90,62 @@ fn instantiate_grid(
 
 fn main() {
     let opt = Opt::from_args();
-    let (grid, grid_tracker) = instantiate_grid(opt.m, opt.n);
-    let mut history: HashMap<u64, usize, U64Hasher> = HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
+    let (mut grid, grid_tracker) = instantiate_grid(opt.m, opt.n);
     // let history: RwLock<HashMap<Vec<u64>, usize>> = RwLock::new(HashMap::<Vec<u64>, usize>::new());
 
-    let mut state = match opt.read {
+    let mut state = match opt.read.clone() {
         Some(name) => BoardState::from(
             serde_cbor::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw,
         ),
-        None => BoardState::new(grid)
+        None => BoardState::new(grid.clone())
     };
 
-    let value = state.calculate(0, opt.dist_level, 0, & mut history, &grid_tracker);
+
+    loop {
+        if state.grid.node_count() == 0 {
+            println!("Done! Empty graph detected!");
+            break
+        }
+
+        run(& mut state.clone(), opt.clone(), &grid_tracker);
+        println!("X coord:");
+        let mut x = String::new();
+        io::stdin()
+            .read_line(&mut x)
+            .expect("failed to read from stdin");
+
+        println!("Y coord:");
+        let mut y = String::new();
+        io::stdin()
+            .read_line(&mut y)
+            .expect("failed to read from stdin");
+
+        state = match y.trim().parse::<usize>() { // TODO: switch back to if/let syntax 
+            Ok(y_coord) => match x.trim().parse::<usize>() {
+                Ok(x_coord) => {
+                    println!("Move to play: ({}, {})", x_coord, y_coord);
+
+                    assert!(grid_tracker[x_coord][y_coord].0.0 == x_coord); // defensive
+                    assert!(grid_tracker[x_coord][y_coord].0.1 == y_coord);
+
+                    grid = remove_node(grid, &mut grid_tracker[x_coord][y_coord].1.clone());
+                    BoardState::new(grid.clone())
+                },
+                Err(_err) => state.clone()
+            },
+            Err(_err) => state.clone()
+        };
+    }
+
+
+    std::process::exit(0); // faster exit
+}
+
+fn run(state: & mut BoardState, opt: Opt, grid_tracker:
+    &Vec<Vec<((usize, usize, u64), NodeIndex)>>
+    ){
+    let mut history: HashMap<u64, usize, U64Hasher> = HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
+    let value = state.calculate(0, opt.dist_level, 0, & mut history, grid_tracker);
     if value.is_some() {
         print!("Table: {{");
         for i in 0..opt.n {
@@ -116,8 +161,6 @@ fn main() {
     } else {
         println!("Progress saved to disk");
     }
-
-    std::process::exit(0); // faster exit
 }
 
 pub struct U64Hasher(u64);
@@ -156,6 +199,7 @@ impl BuildHasher for U64Hasher {
     }
 }
 
+#[derive(Debug, Clone)]
 struct BoardState {
     grid: StableGraph<(), u8, Undirected>,
 }
