@@ -47,6 +47,10 @@ struct Opt {
     // File to read from
     #[structopt(short = "r", long = "read")]
     read: Option<String>,
+
+    // File to read from
+    #[structopt(short = "s", long = "non-interactive")]
+    noninteractive: bool,
 }
 
 // The graph is represented by edges with a byte:
@@ -108,6 +112,11 @@ fn main() {
         }
 
         run(& mut state.clone(), opt.clone(), &grid_tracker);
+
+        if opt.noninteractive{
+            break
+        }
+
         println!("X coord:");
         let mut x = String::new();
         io::stdin()

@@ -20,4 +20,4 @@ jobs:
         cargo test --verbose
         cargo bench --verbose
         bash release.sh
-        time ./target/release/non-attacking-queens -n 8 -m 8
+        time ./target/release/non-attacking-queens -n 8 -m 8 -s
