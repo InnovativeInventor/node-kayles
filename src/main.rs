@@ -51,6 +51,9 @@ struct Opt {
     // Non-interactive, for use in scripts and CI/CD
     #[structopt(short = "s", long = "non-interactive")]
     noninteractive: bool,
+
+    #[structopt(short = "o", long = "output")]
+    output: bool,
 }
 
 // The graph is represented by edges with a byte:
@@ -59,10 +62,10 @@ fn instantiate_grid(
     n: usize,
     m: usize,
 ) -> (
-    StableGraph<(), u8, Undirected>,
+    StableGraph<(), (), Undirected>,
     Vec<Vec<((usize, usize, u64), NodeIndex)>>,
 ) {
-    let mut grid = StableGraph::<(), u8, Undirected>::with_capacity(n*n, n*(n+1));
+    let mut grid = StableGraph::<(), (), Undirected>::with_capacity(n*n, n*(n+1));
     let mut grid_tracker: Vec<Vec<((usize, usize, u64), NodeIndex)>> = Vec::with_capacity(n*n);
     for i in 0..n as i64 {
         let mut row = vec![];
@@ -70,19 +73,19 @@ fn instantiate_grid(
             row.push(((i as usize, j as usize, hash(&(i as usize, j as usize))), grid.add_node(())));
             for k in 1..(cmp::max(i,j)+1) {
                 if j - k >= 0 {
-                    grid.update_edge(row[(j - k) as usize].1, row[j as usize].1, 0);
+                    grid.update_edge(row[(j - k) as usize].1, row[j as usize].1, ());
                 }
 
                 if i - k >= 0 {
-                    grid.update_edge(grid_tracker[(i - k) as usize][j as usize].1, row[j as usize].1, 1);
+                    grid.update_edge(grid_tracker[(i - k) as usize][j as usize].1, row[j as usize].1, ());
                 }
 
                 if i - k >= 0 && j - k >= 0 {
-                    grid.update_edge(grid_tracker[(i - k) as usize][(j - k) as usize].1, row[j as usize].1, 2);
+                    grid.update_edge(grid_tracker[(i - k) as usize][(j - k) as usize].1, row[j as usize].1, ());
                 }
 
                 if i - k >= 0 && j + k < m as i64 {
-                    grid.update_edge(grid_tracker[(i - k) as usize][(j + k) as usize].1, row[j as usize].1, 3);
+                    grid.update_edge(grid_tracker[(i - k) as usize][(j + k) as usize].1, row[j as usize].1, ());
                 }
             }
         }
@@ -99,7 +102,7 @@ fn main() {
 
     let mut state = match opt.read.clone() {
         Some(name) => BoardState::from(
-            serde_cbor::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw,
+            serde_json::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw,
         ),
         None => BoardState::new(grid.clone())
     };
@@ -144,6 +147,14 @@ fn main() {
             },
             Err(_err) => state.clone()
         };
+    }
+
+    if opt.output {
+        let fs = File::create("output.json").unwrap();
+        serde_json::to_writer(
+            fs,
+            &BoardStateRaw::from(state),
+        ).unwrap();
     }
 
 
@@ -210,7 +221,7 @@ impl BuildHasher for U64Hasher {
 
 #[derive(Debug, Clone)]
 struct BoardState {
-    grid: StableGraph<(), u8, Undirected>,
+    grid: StableGraph<(), (), Undirected>,
 }
 
 impl From<BoardStateRaw> for BoardState {
@@ -223,7 +234,7 @@ impl From<BoardStateRaw> for BoardState {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct BoardStateRaw {
-    grid: StableGraph<(), u8, Undirected>,
+    grid: StableGraph<(), (), Undirected>,
 }
 
 impl From<BoardState> for BoardStateRaw {
@@ -236,7 +247,7 @@ impl From<BoardState> for BoardStateRaw {
 
 impl BoardState {
     fn new(
-        grid: StableGraph<(), u8, Undirected>,
+        grid: StableGraph<(), (), Undirected>,
    //     history: &'static mut HashMap<Vec<u64>, usize>
     ) -> Self {
         Self {
@@ -250,7 +261,7 @@ impl BoardState {
             return Some(1);
         }
 
-        let mut graph_history: Vec<Graph<(), u8, Undirected>> = Vec::with_capacity(self.grid.node_count());
+        let mut graph_history: Vec<Graph<(), (), Undirected>> = Vec::with_capacity(self.grid.node_count());
         let mut values: Vec<usize> = Vec::with_capacity(self.grid.node_count());
 
         for i in 0..grid_tracker.len() {
@@ -271,9 +282,9 @@ impl BoardState {
                     let new_grid = remove_node(self.grid.clone(), &mut node);
 
                     if dist_level == level + 1 {
-                        let name = format!("progress.{}.{}-{}.cbor", level, x, y);
+                        let name = format!("progress.{}.{}-{}.json", level, x, y);
                         let fs = File::create(name.clone()).unwrap();
-                        serde_cbor::to_writer(
+                        serde_json::to_writer(
                             fs,
                             &BoardStateRaw::from(BoardState::new(new_grid)),
                         )
@@ -335,9 +346,9 @@ impl BoardState {
 }
 
 fn remove_node(
-    mut grid: StableGraph<(), u8, Undirected>,
+    mut grid: StableGraph<(), (), Undirected>,
     node: &mut NodeIndex,
-) -> StableGraph<(), u8, Undirected> {
+) -> StableGraph<(), (), Undirected> {
     let mut walker = grid.neighbors(*node).detach();
     while let Some((_edge, neighbor)) = walker.next(&grid) {
         // contract
