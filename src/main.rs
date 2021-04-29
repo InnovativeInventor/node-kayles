@@ -97,16 +97,22 @@ fn instantiate_grid(
 
 fn main() {
     let opt = Opt::from_args();
-    let (mut grid, grid_tracker) = instantiate_grid(opt.m, opt.n);
-    // let history: RwLock<HashMap<Vec<u64>, usize>> = RwLock::new(HashMap::<Vec<u64>, usize>::new());
 
-    let mut state = match opt.read.clone() {
-        Some(name) => BoardState::from(
-            serde_json::from_reader(File::open(name).unwrap()).unwrap(): BoardStateRaw,
-        ),
-        None => BoardState::new(grid.clone())
+    let (mut state, grid_tracker)  = match opt.read.clone() {
+        Some(name) => 
+        {
+            println!("Warning: table coords may not be correct");
+            (BoardState::from(
+                (serde_json::from_reader(File::open(name.clone()).unwrap()).unwrap(): (BoardStateRaw, Vec<Vec<((usize, usize, u64), NodeIndex)>>)).0),
+            (serde_json::from_reader(File::open(name).unwrap()).unwrap(): (BoardStateRaw, Vec<Vec<((usize, usize, u64), NodeIndex)>>)).1)
+        }
+        None => {
+                    let (grid, grid_tracker) = instantiate_grid(opt.m, opt.n);
+                    (BoardState::new(grid), grid_tracker)
+                }
     };
 
+    let mut grid = state.grid.clone();
 
     loop {
         if state.grid.node_count() == 0 {
@@ -153,7 +159,7 @@ fn main() {
         let fs = File::create("output.json").unwrap();
         serde_json::to_writer(
             fs,
-            &BoardStateRaw::from(state),
+            &(&BoardStateRaw::from(state), grid_tracker),
         ).unwrap();
     }
 
@@ -168,10 +174,10 @@ fn run(state: & mut BoardState, opt: Opt, grid_tracker:
     let value = state.calculate(0, opt.dist_level, 0, & mut history, grid_tracker);
     if value.is_some() {
         print!("Table: {{");
-        for i in 0..opt.n {
-            for j in 0..opt.m {
-                if history.get(&hash(&(i,j))).is_some() {
-                    print!("{:?}: {},", (i, j), history.get(&hash(&(i,j))).unwrap());
+        for i in 0..grid_tracker.len() {
+            for ((x, y, hash_value), _node) in &grid_tracker[i] {
+                if history.get(hash_value).is_some() {
+                    print!("{:?}: {},", (x, y), history.get(hash_value).unwrap());
                 }
             }
         }
@@ -286,7 +292,7 @@ impl BoardState {
                         let fs = File::create(name.clone()).unwrap();
                         serde_json::to_writer(
                             fs,
-                            &BoardStateRaw::from(BoardState::new(new_grid)),
+                            &(&BoardStateRaw::from(BoardState::new(new_grid)), self.grid.clone()),
                         )
                         .expect(format!("Failed to serialize {}!", name).as_str());
                         continue 'nodeloop
