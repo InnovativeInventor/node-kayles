@@ -4,6 +4,11 @@ import json
 import secrets
 
 def encode(graph: nx.Graph, filename: str) -> dict:
+    """
+    Takes in a networkx graph with integer node values and serializes it to a json file.
+    Example usage with binary:
+        ./target/release/non-attacking-queens -r input.json
+    """
     nodes = [None]*len(graph.nodes)
     edges = []
     for edge in graph.edges:
