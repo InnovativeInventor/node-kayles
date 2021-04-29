@@ -292,11 +292,11 @@ impl BoardState {
                         continue 'nodeloop
                     }
 
-                    let grid_graph = Graph::from(new_grid);
+                    let grid_graph = Graph::from(new_grid.clone());
                     for graph in &graph_history {
                         // todo: measure if actually faster
                         if is_isomorphic(
-                            &new_grid,
+                            &grid_graph,
                             graph
                         ) {
                             // todo: examine diff with/without matching
