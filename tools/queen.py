@@ -23,7 +23,6 @@ Example usage:
 
 def main(n: int = 9, filename: str = "input.json"):
     graph = nx.Graph()
-    n = 9
     counter = 0
     node_grid = []
     for i in range(n):
