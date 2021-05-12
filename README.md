@@ -26,3 +26,7 @@ For larger, you could do:
 ulimit -s 4294967295
 ```
 
+## Calculating Sequence (for reproducing A344227)
+```
+./target/release/non-attacking-queens --seq
+```
