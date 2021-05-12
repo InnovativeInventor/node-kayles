@@ -1,6 +1,5 @@
 #![feature(test)]
 #![feature(type_ascription)]
-#![feature(const_fn)]
 #![feature(destructuring_assignment)]
 
 /*
