@@ -8,15 +8,20 @@ def encode(graph: nx.Graph, filename: str) -> dict:
     Takes in a networkx graph with integer node values and serializes it to a json file.
     Example usage with binary:
         ./target/release/non-attacking-queens -r input.json
+    Directed graphs are not supported
     """
+    assert not isinstance(graph, nx.DiGraph)
+    assert not isinstance(graph, nx.MultiDiGraph)
+
     nodes = [None]*len(graph.nodes)
     edges = []
     for edge in graph.edges:
         edges.append([edge[0], edge[1], None])
 
     grid_tracker = []
-    for node in graph.nodes:
+    for node, _ in enumerate(graph.nodes):
         grid_tracker.append(((node, 0, secrets.randbelow(1<<64)), node))
+        # grid_tracker.append(((node, 0, abs(hash(node))), node))
 
     serialized_graph = (
         {
