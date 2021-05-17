@@ -12,7 +12,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use fnv::FnvHasher;
 use petgraph::algo::is_isomorphic;
-use petgraph::graph::{Graph, NodeIndex};
+use petgraph::graph::{Graph};
+use petgraph::stable_graph::{NodeIndex};
 use petgraph::stable_graph::StableGraph;
 use petgraph::Undirected;
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,10 @@ use std::cmp;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{BuildHasher, Hash, Hasher};
+use petgraph::visit::NodeIndexable;
+use petgraph::visit::IntoEdgeReferences; 
+use petgraph::visit::EdgeRef; 
+use petgraph::unionfind::UnionFind;
 use std::io;
 use structopt::StructOpt;
 
@@ -68,18 +73,18 @@ fn instantiate_grid(
     n: usize,
     m: usize,
 ) -> (
-    StableGraph<(), (), Undirected>,
-    Vec<Vec<((usize, usize, u64), NodeIndex)>>,
+    StableGraph<u64, (), Undirected>,
+    Vec<Vec<((usize, usize), NodeIndex)>>,
 ) {
     println!("Calculating {} by {} board", n, m);
-    let mut grid = StableGraph::<(), (), Undirected>::with_capacity(n * n, n * (n + 1));
-    let mut grid_tracker: Vec<Vec<((usize, usize, u64), NodeIndex)>> = Vec::with_capacity(n * n);
+    let mut grid = StableGraph::<u64, (), Undirected>::with_capacity(n * n, n * (n + 1));
+    let mut grid_tracker: Vec<Vec<((usize, usize), NodeIndex)>> = Vec::with_capacity(n * n);
     for i in 0..n as i64 {
         let mut row = vec![];
         for j in 0..m as i64 {
             row.push((
-                (i as usize, j as usize, hash(&(i as usize, j as usize))),
-                grid.add_node(()),
+                (i as usize, j as usize),
+                grid.add_node(hash(&(i as usize, j as usize))),
             ));
             for k in 1..(cmp::max(i, j) + 1) {
                 if j - k >= 0 {
@@ -131,11 +136,11 @@ fn main() {
             (
                 BoardState::from(
                     (serde_json::from_reader(File::open(name.clone()).unwrap()).unwrap():
-                        (BoardStateRaw, Vec<Vec<((usize, usize, u64), NodeIndex)>>))
+                        (BoardStateRaw, Vec<Vec<((usize, usize), NodeIndex)>>))
                         .0,
                 ),
                 (serde_json::from_reader(File::open(name).unwrap()).unwrap():
-                    (BoardStateRaw, Vec<Vec<((usize, usize, u64), NodeIndex)>>))
+                    (BoardStateRaw, Vec<Vec<((usize, usize), NodeIndex)>>))
                     .1,
             )
         }
@@ -176,7 +181,7 @@ fn main() {
                         assert!(grid_tracker[x_coord][y_coord].0 .0 == x_coord); // defensive
                         assert!(grid_tracker[x_coord][y_coord].0 .1 == y_coord);
 
-                        grid = remove_node(grid, &mut grid_tracker[x_coord][y_coord].1.clone());
+                        (_, grid) = remove_node(grid, &mut grid_tracker[x_coord][y_coord].1.clone(), 0);
                         BoardState::new(grid.clone())
                     }
                     Err(_err) => state.clone(),
@@ -202,19 +207,22 @@ fn main() {
 fn run(
     state: &mut BoardState,
     opt: Opt,
-    grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>,
+    grid_tracker: &Vec<Vec<((usize, usize), NodeIndex)>>,
 ) {
     let mut history: HashMap<u64, usize, U64Hasher> =
         HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
-    let value = state.calculate(0, opt.dist_level, 0, &mut history, grid_tracker);
+    // let original_grid = state.grid.clone(); 
+    
+    let value = state.calculate(0, opt.dist_level, 0, &mut history);
     if value.is_some() {
         println!("Nimber: {}", value.unwrap());
         if opt.verbose {
             print!("Table (symmetries removed): {{");
             for i in 0..grid_tracker.len() {
-                for ((x, y, hash_value), _node) in &grid_tracker[i] {
-                    if history.get(hash_value).is_some() {
-                        print!("{:?}: {},", (x, y), history.get(hash_value).unwrap());
+                for ((x, y), mut node) in &grid_tracker[i] {
+                    let (hash_value, _graph) = remove_node(state.grid.clone(), &mut node, 0);
+                    if history.get(&hash_value).is_some() {
+                        print!("{:?}: {},", (x, y), history.get(&hash_value).unwrap());
                     }
                 }
             }
@@ -266,7 +274,7 @@ impl BuildHasher for U64Hasher {
 
 #[derive(Debug, Clone)]
 struct BoardState {
-    grid: StableGraph<(), (), Undirected>,
+    grid: StableGraph<u64, (), Undirected>,
 }
 
 impl From<BoardStateRaw> for BoardState {
@@ -277,7 +285,7 @@ impl From<BoardStateRaw> for BoardState {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct BoardStateRaw {
-    grid: StableGraph<(), (), Undirected>,
+    grid: StableGraph<u64, (), Undirected>,
 }
 
 impl From<BoardState> for BoardStateRaw {
@@ -288,7 +296,7 @@ impl From<BoardState> for BoardStateRaw {
 
 impl BoardState {
     fn new(
-        grid: StableGraph<(), (), Undirected>,
+        grid: StableGraph<u64, (), Undirected>,
         //     history: &'static mut HashMap<Vec<u64>, usize>
     ) -> Self {
         Self { grid }
@@ -299,7 +307,6 @@ impl BoardState {
         dist_level: usize,
         stack: u64,
         history: &mut HashMap<u64, usize, U64Hasher>,
-        grid_tracker: &Vec<Vec<((usize, usize, u64), NodeIndex)>>,
     ) -> Option<usize> {
         if self.grid.node_count() == 0 {
             return Some(0);
@@ -307,15 +314,34 @@ impl BoardState {
             return Some(1);
         }
 
-        let mut graph_history: Vec<Graph<(), (), Undirected>> =
-            Vec::with_capacity(self.grid.node_count());
-        let mut values: Vec<usize> = Vec::with_capacity(self.grid.node_count());
+        let subgraphs = connected_subgraphs(self.grid.clone(), stack);
+        // let subgraphs_len = subgraphs.len();
 
-        for i in 0..grid_tracker.len() {
-            'nodeloop: for ((x, y, hash_value), mut node) in &grid_tracker[i] {
+        let mut sum_value = 0;
+        'subgraphloop: for (subgraph, subgraph_stack) in &subgraphs {
+            match history.get(&subgraph_stack) { // we check the lookup table twice
+                Some(value) => {
+                    sum_value ^= *value;
+                    continue 'subgraphloop;
+                }
+                None => {}
+            }
+
+            let mut graph_history: Vec<Graph<u64, (), Undirected>> =
+                Vec::with_capacity(self.grid.node_count());
+            let mut values: Vec<usize> = Vec::with_capacity(self.grid.node_count());
+
+            'nodeloop: for mut node in subgraph.node_indices() {
                 if self.grid.contains_node(node) {
-                    let mut curr_stack = stack;
-                    curr_stack ^= hash_value;
+                    // can make more efficient
+                    let (curr_stack, new_grid) = remove_node(subgraph.clone(), &mut node, *subgraph_stack);
+                    if new_grid.node_count() == 0 {
+                        values.push(0);
+                        continue 'nodeloop;
+                    } else if new_grid.node_count() == 1 {
+                        values.push(1);
+                        continue 'nodeloop;
+                    }
 
                     match history.get(&curr_stack) {
                         Some(value) => {
@@ -323,23 +349,6 @@ impl BoardState {
                             continue 'nodeloop;
                         }
                         None => {}
-                    }
-
-                    // can make more efficient
-                    let new_grid = remove_node(self.grid.clone(), &mut node);
-
-                    if dist_level == level + 1 {
-                        let name = format!("progress.{}.{}-{}.json", level, x, y);
-                        let fs = File::create(name.clone()).unwrap();
-                        serde_json::to_writer(
-                            fs,
-                            &(
-                                &BoardStateRaw::from(BoardState::new(new_grid)),
-                                self.grid.clone(),
-                            ),
-                        )
-                        .expect(format!("Failed to serialize {}!", name).as_str());
-                        continue 'nodeloop;
                     }
 
                     let grid_graph = Graph::from(new_grid.clone());
@@ -352,57 +361,68 @@ impl BoardState {
                     }
                     graph_history.push(grid_graph);
 
-                    let value = BoardState::new(new_grid).calculate(
+                    if dist_level == level + 1 {
+                        let name = format!("progress.{}.{}.json", level, curr_stack);
+                        let fs = File::create(name.clone()).unwrap();
+                        serde_json::to_writer(
+                            fs,
+                            &(
+                                &BoardStateRaw::from(BoardState::new(new_grid)),
+                                self.grid.clone(),
+                            ),
+                        )
+                        .expect(format!("Failed to serialize {}!", name).as_str());
+                        continue 'nodeloop;
+                    }
+
+                    let subgraph_value = BoardState::new(new_grid).calculate(
                         level + 1,
                         dist_level,
                         curr_stack,
                         history,
-                        grid_tracker,
                     );
-                    match value {
-                        Some(unwrapped_value) => {
-                            values.push(unwrapped_value);
-                            {
-                                history.insert(curr_stack, unwrapped_value);
-                            }
-                        }
-                        None => return None,
-                    }
 
-                    /*
-                    if value.is_some() {
-                        let unwrapped_value = value.unwrap();
-                        values.push(unwrapped_value);
-                        {
-                            history.insert(curr_stack, unwrapped_value);
-                        }
-                    } else {
-                        return None;
+                    if let Some(unwrapped_value) = subgraph_value {
+                        history.insert(curr_stack, unwrapped_value);
+                        values.push(sum_value);
                     }
-                    */
                 }
             }
+
+            sum_value ^= mex(values);
         }
+
 
         if dist_level == level + 1 {
             return None;
         }
 
-        Some(mex(values))
+        Some(sum_value)
     }
 }
 
 fn remove_node(
-    mut grid: StableGraph<(), (), Undirected>,
+    mut grid: StableGraph<u64, (), Undirected>,
     node: &mut NodeIndex,
-) -> StableGraph<(), (), Undirected> {
+    stack: u64
+) -> (u64, StableGraph<u64, (), Undirected>) {
     let mut walker = grid.neighbors(*node).detach();
+    let mut curr_stack = stack.clone();
     while let Some((_edge, neighbor)) = walker.next(&grid) {
+        // todo: check if duplicate node
         // contract
-        grid.remove_node(neighbor);
+        match grid.remove_node(neighbor) {
+            Some(hash) => {curr_stack ^= hash},
+            None => {}
+        };
     }
-    grid.remove_node(*node);
-    grid
+
+    match grid.remove_node(*node) {
+        Some(hash) => {curr_stack ^= hash},
+        None => {}
+    };
+
+    (curr_stack, grid)
 }
 
 fn hash<T: Hash>(t: &T) -> u64 {
@@ -432,6 +452,57 @@ fn mex(values: Vec<usize>) -> usize {
     }
 
     min
+}
+
+fn connected_subgraphs(graph: StableGraph<u64, (), Undirected>, stack: u64) -> Vec<(StableGraph<u64, (), Undirected>, u64)> {
+    let mut vertex_sets = UnionFind::new(graph.node_bound());
+    for edge in graph.edge_indices() {
+        if let Some((source, target)) = graph.edge_endpoints(edge) {
+            vertex_sets.union(graph.to_index(source), graph.to_index(target));
+        }
+        // union the two vertices of the edge
+    }
+
+    // Finding size/number of connected subgraphs
+    let labels = vertex_sets.into_labeling();
+    let mut deduped_labels = labels.clone();
+    deduped_labels.dedup();
+    let size = deduped_labels.len();
+
+    if size > 1 {
+        let mut subgraphs = Vec::<(StableGraph<u64, (), Undirected>, u64)>::with_capacity(size);
+        for label in deduped_labels {
+            // println!("{}, {:?}", size, labels);
+            let mut dead = 0;
+            let mut result_g = StableGraph::<u64, (), Undirected>::default();
+
+            for node in graph.node_indices() {
+                if let Some(node_weight) = graph.node_weight(node) {
+                    if labels[node.index()] == label {
+                        result_g.add_node(*node_weight);
+                    } else {
+                        // println!("weight: {}, node: {:?}, label: {}", node_weight, node, label);
+                        dead ^= node_weight;
+                    }
+                }
+            }
+            // println!("done, dead: {}, size:{}", dead, size);
+            for edge in graph.edge_indices() {
+                if let Some((source, target)) = graph.edge_endpoints(edge) {
+                    if result_g.contains_node(source) && result_g.contains_node(target) {
+                        result_g.add_edge(source, target, ());
+                    }
+                }
+            }
+            subgraphs.push((result_g, dead^stack)) // alive^total should be all the dead nodes (aka the stack)
+        }
+        subgraphs
+    } else if size == 1 {
+        vec![(graph, stack)]
+    } else {
+        println!("size: {}, labels: {:?}, graph: {:?}", size, labels, graph);
+        panic!();
+    }
 }
 
 #[cfg(test)]
@@ -477,7 +548,7 @@ mod tests {
     #[test]
     fn test_remove_node_2() {
         let (grid, grid_tracker) = instantiate_grid(2, 2);
-        let new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
+        let (_, new_grid) = remove_node(grid, &mut grid_tracker[0][0].1.clone(), 0);
         assert!(new_grid.node_count() == 0);
         assert!(new_grid.edge_count() == 0);
     }
@@ -486,7 +557,7 @@ mod tests {
     fn test_remove_node_3() {
         let (grid, grid_tracker) = instantiate_grid(3, 3);
 
-        let new_grid = remove_node(grid, &mut grid_tracker[0][0].1.clone());
+        let (_, new_grid) = remove_node(grid, &mut grid_tracker[0][0].1.clone(), 0);
 
         assert!(new_grid.node_count() == 2);
         assert!(new_grid.edge_count() == 1);
@@ -501,7 +572,7 @@ mod tests {
                 HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
             let (grid, grid_tracker) = instantiate_grid(*size, *size);
             let mut state = BoardState::new(grid.clone());
-            assert!(state.calculate(0, 0, 0, &mut history, &grid_tracker) == Some(*sol));
+            assert!(state.calculate(0, 0, 0, &mut history) == Some(*sol));
         }
     }
 
@@ -512,7 +583,7 @@ mod tests {
                 HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
             let (grid, grid_tracker) = instantiate_grid(*size, *size);
             let mut state = BoardState::new(grid.clone());
-            assert!(state.calculate(0, 0, 0, &mut history, &grid_tracker) == Some(*sol));
+            assert!(state.calculate(0, 0, 0, &mut history) == Some(*sol));
         }
     }
 
@@ -522,7 +593,7 @@ mod tests {
             HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
         let (grid, grid_tracker) = instantiate_grid(5, 5);
         let mut state = BoardState::new(grid.clone());
-        b.iter(|| state.calculate(0, 0, 0, &mut history, &grid_tracker));
+        b.iter(|| state.calculate(0, 0, 0, &mut history));
     }
 
     #[bench]
@@ -531,7 +602,7 @@ mod tests {
         let mut state = BoardState::new(grid.clone());
         let mut history: HashMap<u64, usize, U64Hasher> =
             HashMap::with_capacity_and_hasher(50000000, U64Hasher::new());
-        b.iter(|| state.calculate(0, 0, 0, &mut history, &grid_tracker));
+        b.iter(|| state.calculate(0, 0, 0, &mut history));
     }
 
     #[bench]
@@ -566,5 +637,49 @@ mod tests {
         assert!(u64hash(&1) == 1);
         assert!(u64hash(&100) == u64hash(&100));
         assert!(u64hash(&100) == 100);
+    }
+
+    #[test]
+    fn test_subgraph_detection() {
+        let (grid, grid_tracker) = instantiate_grid(6, 6);
+        let subgraphs = connected_subgraphs(grid, 0);
+        assert!(subgraphs.len() == 1);
+        // assert!(stack != 0);
+    }
+
+    #[test]
+    fn test_subgraph_detection_2() { // from docs
+        let mut graph = StableGraph::<u64, (), Undirected>::default();
+        let a = graph.add_node(1); // node with no weight
+        let b = graph.add_node(0);
+        let c = graph.add_node(0);
+        let d = graph.add_node(0);
+        let e = graph.add_node(0);
+        let f = graph.add_node(0);
+        let g = graph.add_node(0);
+        let h = graph.add_node(1);
+
+        graph.extend_with_edges(&[
+            (a, b),
+            (b, c),
+            (c, d),
+            (d, a),
+            (e, f),
+            (f, g),
+            (g, h),
+            (h, e)
+        ]);
+        // a ----> b       e ----> f
+        // ^       |       ^       |
+        // |       v       |       v
+        // d <---- c       h <---- g
+
+        assert_eq!(connected_subgraphs(graph.clone(), 0).len(),2);
+        assert_eq!(connected_subgraphs(graph.clone(), 0)[0].1,1);
+        assert_eq!(connected_subgraphs(graph.clone(), 0)[1].1,1);
+        graph.add_edge(b,e,());
+        assert_eq!(connected_subgraphs(graph.clone(), 0).len(),1);
+        assert_eq!(connected_subgraphs(graph.clone(), 0)[0].1,0);
+
     }
 }
