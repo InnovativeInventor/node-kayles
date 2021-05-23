@@ -22,7 +22,7 @@ jobs:
         bash release.sh
         time ./target/release/node-kayles -n 8 -m 8 -s
 
-        pip install networkx
+        pip install networkx typer
         python tools/petersen.py
         python tools/queens.py
         python tools/lattice.py
