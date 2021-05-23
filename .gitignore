@@ -3,6 +3,5 @@ out.dot
 out.dot.png
 progress.*
 flamegraph.svg
-output.json
-input.json
+*.json
 tools/__pycache__

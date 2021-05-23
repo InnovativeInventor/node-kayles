@@ -19,10 +19,10 @@ Example usage:
     python queen.py 9 input.json
 
     To calculate the board state, run:
-        ./target/release/non-attacking-queens -r input.json
+        ./target/release/node-kayles -r lattice.json
 """
 
-def main(n: int = 3, m: int = 0, filename: str = "input.json"):
+def main(n: int = 3, m: int = 0, filename: str = "lattice.json"):
     graph = nx.Graph()
     counter = 0
     node_grid = []
@@ -40,7 +40,7 @@ def main(n: int = 3, m: int = 0, filename: str = "input.json"):
             counter += 1
         node_grid.append(row)
         
-    serialize.encode(graph, "input.json")
+    serialize.encode(graph, filename)
 
 if __name__ == "__main__":
     typer.run(main)

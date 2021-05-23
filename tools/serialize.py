@@ -7,7 +7,7 @@ def encode(graph: nx.Graph, filename: str) -> dict:
     """
     Takes in a networkx graph with integer node values and serializes it to a json file.
     Example usage with binary:
-        ./target/release/non-attacking-queens -r input.json
+        ./target/release/node-kayles -r input.json
     Directed graphs are not supported
     """
     assert not isinstance(graph, nx.DiGraph)

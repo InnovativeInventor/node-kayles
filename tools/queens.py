@@ -18,10 +18,10 @@ Example usage:
     python queen.py 9 input.json
 
     To calculate the board state, run:
-        ./target/release/non-attacking-queens -r input.json
+        ./target/release/node-kayles -sr input.json
 """
 
-def main(n: int = 9, filename: str = "input.json"):
+def main(n: int = 9, filename: str = "queens.json"):
     graph = nx.Graph()
     counter = 0
     node_grid = []
@@ -41,10 +41,8 @@ def main(n: int = 9, filename: str = "input.json"):
                     graph.add_edge(node_grid[i-k][j+k], counter)
             counter += 1
         node_grid.append(row)
-    print("Edges:", graph.number_of_edges())
-    print("Nodes:", graph.number_of_nodes())
         
-    serialize.encode(graph, "input.json")
+    serialize.encode(graph, filename)
 
 if __name__ == "__main__":
     typer.run(main)
