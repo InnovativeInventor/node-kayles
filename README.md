@@ -1,5 +1,5 @@
-## non-attacking-queens
-[![Rust tests](https://github.com/InnovativeInventor/non-attacking-queens/actions/workflows/test.yaml/badge.svg)](https://github.com/InnovativeInventor/non-attacking-queens/actions/workflows/test.yaml)
+## Node-Kayles Sprague-Grundy Value Calculator
+[![Rust tests](https://github.com/InnovativeInventor/node-kayles/actions/workflows/test.yaml/badge.svg)](https://github.com/InnovativeInventor/node-kayles/actions/workflows/test.yaml)
 
 Some calculations for the [non attacking queens](https://www.maa.org/sites/default/files/may_2006_-_noon55524.pdf) problem using a graph-theoretic node-contraction algorithim (aka Node-Kayles).
 Pull requests, feedback, and contributions are always welcome.
