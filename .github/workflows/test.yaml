@@ -21,6 +21,8 @@ jobs:
         cargo bench --verbose
         bash release.sh
         time ./target/release/node-kayles -n 8 -m 8 -s
+
+        pip install networkx
         python tools/petersen.py
         python tools/queens.py
         python tools/lattice.py
