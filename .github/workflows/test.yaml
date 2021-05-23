@@ -20,4 +20,7 @@ jobs:
         cargo test --verbose
         cargo bench --verbose
         bash release.sh
-        time ./target/release/non-attacking-queens -n 8 -m 8 -s
+        time ./target/release/node-kayles -n 8 -m 8 -s
+        python tools/petersen.py
+        python tools/queens.py
+        python tools/lattice.py
