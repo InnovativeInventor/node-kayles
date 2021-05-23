@@ -2,7 +2,6 @@
 [![Rust tests](https://github.com/InnovativeInventor/node-kayles/actions/workflows/test.yaml/badge.svg)](https://github.com/InnovativeInventor/node-kayles/actions/workflows/test.yaml)
 
 Some calculations for the [non attacking queens](https://www.maa.org/sites/default/files/may_2006_-_noon55524.pdf) problem using a graph-theoretic node-contraction algorithm (aka Node-Kayles).
-Pull requests, feedback, and contributions are always welcome.
 
 To run and build (with release):
 ```
@@ -21,6 +20,8 @@ bash scripts/queens.sh
 ```
 Sequence (where the first term is a 0x0 chessboard): 0, 1, 1, 2, 1, 3, 1, 2, 3, 1, 0, ***1, 0, 1***
 
+In addition to the optimized Rust implementation, a naive Haskell implementation can be found at `haskell-impls/queens.hs`).
+
 ### Generalized Petersen Sequence (OEIS [A316533](https://oeis.org/A316533))
 ```
 bash release.sh
@@ -35,3 +36,9 @@ bash release.sh
 bash scripts/lattice_3_n.sh
 ```
 Sequence (where the first term is the 3x1 lattice): 2, 1, 1, 0, 3, 3, 2, 2, 2, 3, 3, 5, 2, ***4, 1, 3***
+
+In addition to the optimized Rust implementation, a naive Haskell implementation can be found at `haskell-impls/lattice.hs`).
+
+## License
+This project is licensed under `GPL-3.0-only`.
+Pull requests, feedback, and contributions are always welcome.
