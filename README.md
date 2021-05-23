@@ -29,7 +29,7 @@ A naive Haskell implementation can be found at `haskell-impls/queens.hs`).
 bash release.sh
 bash scripts/petersen_n_2.sh
 ```
-Sequence (where the first term is P(5,2)): 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, ***0***
+Sequence (where the first term is P(5,2)): 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, ***0, 0***
 
 ### 3xN Lattice Sequence (OEIS [A316632](https://oeis.org/A316632))
 ```
