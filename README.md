@@ -13,7 +13,7 @@ bash release.sh
 The new terms for the following [OEIS](https://oeis.org/) sequences are shown below, along with steps to reproduce.
 All ***bolded and italicized sequence terms*** are new/novel results that were previously unknown.
 
-### Non-Attacking Queens Sequence (OEIS [A344227](https://oeis.org/draft/A344227))
+### Non-Attacking Queens Sequence (OEIS [A344227](https://oeis.org/A344227))
 ```
 bash release.sh
 bash scripts/queens.sh
